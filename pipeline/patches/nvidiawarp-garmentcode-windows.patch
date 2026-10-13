@@ -1,0 +1,26 @@
+diff --git a/warp/build.py b/warp/build.py
+index 95b324b..871b752 100644
+--- a/warp/build.py
++++ b/warp/build.py
+@@ -45,7 +45,7 @@ def build_cpu(obj_path, cpp_path, mode="release", verify_fp=False, fast_math=Fal
+         inc_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "native").encode("utf-8")
+         obj_path = obj_path.encode("utf-8")
+ 
+-        err = warp.context.runtime.llvm.compile_cpp(src, cpp_path, inc_path, obj_path, mode == "debug")
++        err = warp.context.runtime.llvm.compile_cpp(src, cpp_path, inc_path, obj_path, mode == "debug", verify_fp)  # Thread: warp-clang.dll from warp-lang 1.0.0 takes verify_fp
+         if err != 0:
+             raise Exception(f"CPU kernel build failed with error code {err}")
+ 
+diff --git a/warp/build_dll.py b/warp/build_dll.py
+index 2f31115..26c9f9f 100644
+--- a/warp/build_dll.py
++++ b/warp/build_dll.py
+@@ -287,7 +287,7 @@ def build_dll_for_arch(dll_path, cpp_paths, cu_path, libs, mode, arch, verify_fp
+                 run_cmd(cuda_cmd)
+                 linkopts.append(quote(cu_out))
+                 linkopts.append(
+-                    f'cudart_static.lib nvrtc_static.lib nvrtc-builtins_static.lib nvptxcompiler_static.lib ws2_32.lib user32.lib /LIBPATH:"{cuda_home}/lib/x64"'
++                    f'cudart_static.lib nvrtc.lib nvptxcompiler_static.lib ws2_32.lib user32.lib /LIBPATH:"{cuda_home}/lib"'
+                 )
+ 
+         with ScopedTimer("link", active=warp.config.verbose):

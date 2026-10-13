@@ -57,3 +57,5 @@ graphify-out/
 .DS_Store
 Thumbs.db
 .codex/
+pipeline/envs/
+pipeline/tools/
