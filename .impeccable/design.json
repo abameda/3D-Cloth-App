@@ -1,0 +1,488 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T03:04:41.111445+00:00",
+  "title": "Design System: Thread",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "tonalRamp": [
+          "oklch(15.00% 0.0103 81.80)",
+          "oklch(26.43% 0.0103 81.80)",
+          "oklch(37.86% 0.0103 81.80)",
+          "oklch(49.29% 0.0103 81.80)",
+          "oklch(60.71% 0.0103 81.80)",
+          "oklch(72.14% 0.0103 81.80)",
+          "oklch(83.57% 0.0103 81.80)",
+          "oklch(95.00% 0.0103 81.80)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0085 84.57)",
+          "oklch(26.43% 0.0085 84.57)",
+          "oklch(37.86% 0.0085 84.57)",
+          "oklch(49.29% 0.0085 84.57)",
+          "oklch(60.71% 0.0085 84.57)",
+          "oklch(72.14% 0.0085 84.57)",
+          "oklch(83.57% 0.0085 84.57)",
+          "oklch(95.00% 0.0085 84.57)"
+        ]
+      },
+      "inset": {
+        "role": "neutral",
+        "displayName": "Inset",
+        "tonalRamp": [
+          "oklch(15.00% 0.0178 81.33)",
+          "oklch(26.43% 0.0178 81.33)",
+          "oklch(37.86% 0.0178 81.33)",
+          "oklch(49.29% 0.0178 81.33)",
+          "oklch(60.71% 0.0178 81.33)",
+          "oklch(72.14% 0.0178 81.33)",
+          "oklch(83.57% 0.0178 81.33)",
+          "oklch(95.00% 0.0178 81.33)"
+        ]
+      },
+      "board": {
+        "role": "neutral",
+        "displayName": "Board",
+        "tonalRamp": [
+          "oklch(15.00% 0.0195 80.11)",
+          "oklch(26.43% 0.0195 80.11)",
+          "oklch(37.86% 0.0195 80.11)",
+          "oklch(49.29% 0.0195 80.11)",
+          "oklch(60.71% 0.0195 80.11)",
+          "oklch(72.14% 0.0195 80.11)",
+          "oklch(83.57% 0.0195 80.11)",
+          "oklch(95.00% 0.0195 80.11)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0132 126.17)",
+          "oklch(26.43% 0.0132 126.17)",
+          "oklch(37.86% 0.0132 126.17)",
+          "oklch(49.29% 0.0132 126.17)",
+          "oklch(60.71% 0.0132 126.17)",
+          "oklch(72.14% 0.0132 126.17)",
+          "oklch(83.57% 0.0132 126.17)",
+          "oklch(95.00% 0.0132 126.17)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.0143 96.62)",
+          "oklch(26.43% 0.0143 96.62)",
+          "oklch(37.86% 0.0143 96.62)",
+          "oklch(49.29% 0.0143 96.62)",
+          "oklch(60.71% 0.0143 96.62)",
+          "oklch(72.14% 0.0143 96.62)",
+          "oklch(83.57% 0.0143 96.62)",
+          "oklch(95.00% 0.0143 96.62)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(15.00% 0.0222 83.26)",
+          "oklch(26.43% 0.0222 83.26)",
+          "oklch(37.86% 0.0222 83.26)",
+          "oklch(49.29% 0.0222 83.26)",
+          "oklch(60.71% 0.0222 83.26)",
+          "oklch(72.14% 0.0222 83.26)",
+          "oklch(83.57% 0.0222 83.26)",
+          "oklch(95.00% 0.0222 83.26)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15.00% 0.0351 152.34)",
+          "oklch(26.43% 0.0351 152.34)",
+          "oklch(37.86% 0.0351 152.34)",
+          "oklch(49.29% 0.0351 152.34)",
+          "oklch(60.71% 0.0351 152.34)",
+          "oklch(72.14% 0.0351 152.34)",
+          "oklch(83.57% 0.0351 152.34)",
+          "oklch(95.00% 0.0351 152.34)"
+        ]
+      },
+      "on-primary": {
+        "role": "primary",
+        "displayName": "On Primary",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 89.88)",
+          "oklch(26.43% 0.0000 89.88)",
+          "oklch(37.86% 0.0000 89.88)",
+          "oklch(49.29% 0.0000 89.88)",
+          "oklch(60.71% 0.0000 89.88)",
+          "oklch(72.14% 0.0000 89.88)",
+          "oklch(83.57% 0.0000 89.88)",
+          "oklch(95.00% 0.0000 89.88)"
+        ]
+      },
+      "selected": {
+        "role": "primary",
+        "displayName": "Selected",
+        "tonalRamp": [
+          "oklch(15.00% 0.0186 127.16)",
+          "oklch(26.43% 0.0186 127.16)",
+          "oklch(37.86% 0.0186 127.16)",
+          "oklch(49.29% 0.0186 127.16)",
+          "oklch(60.71% 0.0186 127.16)",
+          "oklch(72.14% 0.0186 127.16)",
+          "oklch(83.57% 0.0186 127.16)",
+          "oklch(95.00% 0.0186 127.16)"
+        ]
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15.00% 0.1514 28.72)",
+          "oklch(26.43% 0.1514 28.72)",
+          "oklch(37.86% 0.1514 28.72)",
+          "oklch(49.29% 0.1514 28.72)",
+          "oklch(60.71% 0.1514 28.72)",
+          "oklch(72.14% 0.1514 28.72)",
+          "oklch(83.57% 0.1514 28.72)",
+          "oklch(95.00% 0.1514 28.72)"
+        ]
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Dark Background",
+        "tonalRamp": [
+          "oklch(15.00% 0.0076 95.38)",
+          "oklch(26.43% 0.0076 95.38)",
+          "oklch(37.86% 0.0076 95.38)",
+          "oklch(49.29% 0.0076 95.38)",
+          "oklch(60.71% 0.0076 95.38)",
+          "oklch(72.14% 0.0076 95.38)",
+          "oklch(83.57% 0.0076 95.38)",
+          "oklch(95.00% 0.0076 95.38)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0111 91.70)",
+          "oklch(26.43% 0.0111 91.70)",
+          "oklch(37.86% 0.0111 91.70)",
+          "oklch(49.29% 0.0111 91.70)",
+          "oklch(60.71% 0.0111 91.70)",
+          "oklch(72.14% 0.0111 91.70)",
+          "oklch(83.57% 0.0111 91.70)",
+          "oklch(95.00% 0.0111 91.70)"
+        ]
+      },
+      "dark-inset": {
+        "role": "neutral",
+        "displayName": "Dark Inset",
+        "tonalRamp": [
+          "oklch(15.00% 0.0143 89.88)",
+          "oklch(26.43% 0.0143 89.88)",
+          "oklch(37.86% 0.0143 89.88)",
+          "oklch(49.29% 0.0143 89.88)",
+          "oklch(60.71% 0.0143 89.88)",
+          "oklch(72.14% 0.0143 89.88)",
+          "oklch(83.57% 0.0143 89.88)",
+          "oklch(95.00% 0.0143 89.88)"
+        ]
+      },
+      "dark-board": {
+        "role": "neutral",
+        "displayName": "Dark Board",
+        "tonalRamp": [
+          "oklch(15.00% 0.0082 75.27)",
+          "oklch(26.43% 0.0082 75.27)",
+          "oklch(37.86% 0.0082 75.27)",
+          "oklch(49.29% 0.0082 75.27)",
+          "oklch(60.71% 0.0082 75.27)",
+          "oklch(72.14% 0.0082 75.27)",
+          "oklch(83.57% 0.0082 75.27)",
+          "oklch(95.00% 0.0082 75.27)"
+        ]
+      },
+      "dark-text": {
+        "role": "neutral",
+        "displayName": "Dark Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0143 84.58)",
+          "oklch(26.43% 0.0143 84.58)",
+          "oklch(37.86% 0.0143 84.58)",
+          "oklch(49.29% 0.0143 84.58)",
+          "oklch(60.71% 0.0143 84.58)",
+          "oklch(72.14% 0.0143 84.58)",
+          "oklch(83.57% 0.0143 84.58)",
+          "oklch(95.00% 0.0143 84.58)"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.0217 88.74)",
+          "oklch(26.43% 0.0217 88.74)",
+          "oklch(37.86% 0.0217 88.74)",
+          "oklch(49.29% 0.0217 88.74)",
+          "oklch(60.71% 0.0217 88.74)",
+          "oklch(72.14% 0.0217 88.74)",
+          "oklch(83.57% 0.0217 88.74)",
+          "oklch(95.00% 0.0217 88.74)"
+        ]
+      },
+      "dark-line": {
+        "role": "neutral",
+        "displayName": "Dark Line",
+        "tonalRamp": [
+          "oklch(15.00% 0.0194 82.73)",
+          "oklch(26.43% 0.0194 82.73)",
+          "oklch(37.86% 0.0194 82.73)",
+          "oklch(49.29% 0.0194 82.73)",
+          "oklch(60.71% 0.0194 82.73)",
+          "oklch(72.14% 0.0194 82.73)",
+          "oklch(83.57% 0.0194 82.73)",
+          "oklch(95.00% 0.0194 82.73)"
+        ]
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Dark Primary",
+        "tonalRamp": [
+          "oklch(15.00% 0.0418 131.70)",
+          "oklch(26.43% 0.0418 131.70)",
+          "oklch(37.86% 0.0418 131.70)",
+          "oklch(49.29% 0.0418 131.70)",
+          "oklch(60.71% 0.0418 131.70)",
+          "oklch(72.14% 0.0418 131.70)",
+          "oklch(83.57% 0.0418 131.70)",
+          "oklch(95.00% 0.0418 131.70)"
+        ]
+      },
+      "dark-on-primary": {
+        "role": "primary",
+        "displayName": "Dark On Primary",
+        "tonalRamp": [
+          "oklch(15.00% 0.0304 142.96)",
+          "oklch(26.43% 0.0304 142.96)",
+          "oklch(37.86% 0.0304 142.96)",
+          "oklch(49.29% 0.0304 142.96)",
+          "oklch(60.71% 0.0304 142.96)",
+          "oklch(72.14% 0.0304 142.96)",
+          "oklch(83.57% 0.0304 142.96)",
+          "oklch(95.00% 0.0304 142.96)"
+        ]
+      },
+      "dark-selected": {
+        "role": "primary",
+        "displayName": "Dark Selected",
+        "tonalRamp": [
+          "oklch(15.00% 0.0335 135.29)",
+          "oklch(26.43% 0.0335 135.29)",
+          "oklch(37.86% 0.0335 135.29)",
+          "oklch(49.29% 0.0335 135.29)",
+          "oklch(60.71% 0.0335 135.29)",
+          "oklch(72.14% 0.0335 135.29)",
+          "oklch(83.57% 0.0335 135.29)",
+          "oklch(95.00% 0.0335 135.29)"
+        ]
+      },
+      "dark-danger": {
+        "role": "neutral",
+        "displayName": "Dark Danger",
+        "tonalRamp": [
+          "oklch(15.00% 0.0998 23.22)",
+          "oklch(26.43% 0.0998 23.22)",
+          "oklch(37.86% 0.0998 23.22)",
+          "oklch(49.29% 0.0998 23.22)",
+          "oklch(60.71% 0.0998 23.22)",
+          "oklch(72.14% 0.0998 23.22)",
+          "oklch(83.57% 0.0998 23.22)",
+          "oklch(95.00% 0.0998 23.22)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Screen headline",
+        "purpose": "Home/Dressing Room source headings; native header type remains platform-owned."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "closet-viewpoint",
+        "value": "520ms cubic-out",
+        "purpose": "Home-to-closet camera; immediate under Reduce Motion."
+      },
+      {
+        "name": "wave-crossfade",
+        "value": "180ms",
+        "purpose": "Bundled Wave crossfade from Idle; clip motion disabled under Reduce Motion."
+      }
+    ],
+    "breakpoints": [],
+    "nativeMaterials": {
+      "source": "src/ui/roomScene.ts",
+      "boundary": "Separate lit 3D materials, not UI action tokens; mirror has no live character reflection."
+    },
+    "verification": {
+      "milestone": "source record",
+      "reviewDisposition": "recapture",
+      "nativeScreenshots": false,
+      "browserAssets": "Inspection only",
+      "webDetector": "Not run; native code outside scope",
+      "unverified": [
+        "native appearance",
+        "large text",
+        "safe areas",
+        "gestures",
+        "accessibility",
+        "performance",
+        "photographic likeness",
+        "wearable fitting"
+      ],
+      "panelTranslation": "HTML/CSS approximations only; hover/focus are panel treatments. Synthesized tonal ramps are display metadata, not additional source palette rules.",
+      "nativeFaceStatus": "Uncompiled Swift/native source; no phone scan, pose/projection, likeness, gesture or performance acceptance."
+    },
+    "sourceCapabilities": {
+      "capturedGarmentSurface": "`GarmentSurface` displays one actual captured owned garment below Home\u2019s rail when an installed reconstruction is available. Its 230-high native GL view preserves original geometry/texture, supports drag inspection and offers comparison/recovery. Rendering is limited to focused foreground use. The surface remains separate from the character and explicitly not fitted; room hangers and character outfit meshes remain category previews. Native texture appearance and hardware resource use remain unverified.",
+      "liveFaceSource": "The local `modules/thread-face-scanner` Expo module and `LiveFaceScreen` use ARKit face mesh, head pose and expression measurements with capture gates and anchor-continuity checks. The capability-gated button requires an installed iOS build and supported TrueDepth hardware; Expo Go, Android and unsupported hardware retain guided RGB capture. Eight checked poses produce averaged SDK face-surface positions with one neutral-front photograph projected as texture. This is an estimated static face surface, not a complete head, measured back/ears/hair, personal body or facial rig.",
+      "candidateReviewAndOwnership": "Private photograph/3D candidate review precedes explicit activation; failure preserves the previous character. Candidate files use private cache and are pruned on cleanup, startup and local erasure. Photo-face archives retain their own models independently of the selected face: download/open does not activate them; Use this face performs explicit integrity-checked activation, and capture ownership is retained for deletion.",
+      "nativeAcceptanceLimits": "This source has not been Swift-compiled on Windows. Native module registration, physical pose directions, projection/UV orientation, side texture, facial likeness, permissions, lifecycle, storage/privacy, gestures and performance require an installed build and phone proof. No live scan has been established to work on a phone. See `docs/live-face-native-acceptance.md` and `docs/dressing-room-progress.md`; the original scope remains unfinished.",
+      "evidence": [
+        "src/screens/LiveFaceScreen.tsx",
+        "src/ui/NativeFaceScanner.tsx",
+        "modules/thread-face-scanner/ios/ThreadFaceScannerModule.swift",
+        "src/ui/GarmentSurface.tsx",
+        "src/screens/StudioScreen.tsx",
+        "src/faceScan.ts",
+        "src/reconstruction.ts",
+        "src/screens/CaptureScreen.tsx",
+        "docs/live-face-native-acceptance.md",
+        "docs/dressing-room-progress.md"
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<button class=\"ds-button-primary\">Save changes</button>",
+      "css": ".ds-button-primary{min-height:52px;padding:13px 18px;border:0;border-radius:14px;background:#3E5243;color:#FFFFFF;font:600 16px/1.4 system-ui}.ds-button-primary:hover{opacity:.9}.ds-button-primary:active{opacity:.72}.ds-button-primary:disabled{opacity:.45}.ds-button-primary:focus-visible{outline:2px solid #3E5243;outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<button class=\"ds-button-secondary\">Save changes</button>",
+      "css": ".ds-button-secondary{min-height:52px;padding:13px 18px;border:0;border-radius:14px;background:#EAE3D7;color:#3E5243;font:600 16px/1.4 system-ui}.ds-button-secondary:hover{opacity:.9}.ds-button-secondary:active{opacity:.72}.ds-button-secondary:disabled{opacity:.45}.ds-button-secondary:focus-visible{outline:2px solid #3E5243;outline-offset:3px}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<button class=\"ds-button-danger\">Save changes</button>",
+      "css": ".ds-button-danger{min-height:52px;padding:13px 18px;border:0;border-radius:14px;background:#EAE3D7;color:#A7352B;font:600 16px/1.4 system-ui}.ds-button-danger:hover{opacity:.9}.ds-button-danger:active{opacity:.72}.ds-button-danger:disabled{opacity:.45}.ds-button-danger:focus-visible{outline:2px solid #3E5243;outline-offset:3px}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<label class=\"ds-field-label\">Piece name<input class=\"ds-field\" placeholder=\"White weekend tee\"></label>",
+      "css": ".ds-field-label{display:grid;gap:8px;color:#292C25;font:600 16px/1.4 system-ui}.ds-field{min-height:52px;padding:14px;border:1px solid #D6CEBF;border-radius:12px;background:#FFFCF6;color:#292C25;font:400 17px system-ui}.ds-field::placeholder{color:#615F56}.ds-field:focus-visible{outline:2px solid #3E5243;outline-offset:2px}"
+    },
+    {
+      "name": "Category chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Tops</button>",
+      "css": ".ds-chip{min-height:48px;padding:10px 16px;border:0;border-radius:24px;background:#3E5243;color:#FFFFFF;font:600 15px/1.4 system-ui}.ds-chip:hover{opacity:.9}.ds-chip:active{opacity:.7}.ds-chip:focus-visible{outline:2px solid #3E5243;outline-offset:3px}"
+    },
+    {
+      "name": "Notice",
+      "kind": "card",
+      "description": "Source-derived native primitive translated for panel inspection. Browser hover/focus styling is panel-only, not native acceptance.",
+      "html": "<div class=\"ds-notice\" role=\"status\">Clothing shape previews are not a fit prediction.</div>",
+      "css": ".ds-notice{padding:14px;border-radius:12px;background:#EAE3D7;color:#615F56;font:400 14px/1.4 system-ui}"
+    },
+    {
+      "name": "Three tabs",
+      "kind": "nav",
+      "description": "Native source pattern translated to a light-mode panel approximation; browser focus is panel-only.",
+      "html": "<nav class=\"ds-tabs\"><button aria-current=\"page\">Home</button><button>Dressing Room</button><button>Profile</button></nav>",
+      "css": ".ds-tabs{display:flex;background:#FFFCF6;border-top:1px solid #D6CEBF}.ds-tabs button{flex:1;min-height:48px;border:0;background:none;color:#615F56;font:500 12px system-ui}.ds-tabs [aria-current]{color:#3E5243}.ds-tabs button:hover{opacity:.9}.ds-tabs button:active{opacity:.7}.ds-tabs button:focus-visible{outline:2px solid #3E5243;outline-offset:-2px}"
+    },
+    {
+      "name": "Photo rail tile",
+      "kind": "card",
+      "refersTo": "rail-tile",
+      "description": "Native source pattern translated to a light-mode panel approximation; browser focus is panel-only.",
+      "html": "<button class=\"ds-tile\"><span>Photo reference</span><strong>Favorite shirt</strong><small>On your look</small></button>",
+      "css": ".ds-tile{width:126px;display:grid;gap:6px;border:0;padding:0;background:none;text-align:left;color:#292C25;font:400 14px/1.4 system-ui}.ds-tile span{height:134px;display:grid;place-items:center;border-radius:14px;border:2px solid #3E5243;background:#DBE1D4;color:#615F56}.ds-tile small{font-size:12px;color:#615F56}.ds-tile:hover{opacity:.9}.ds-tile:active{opacity:.7}.ds-tile:focus-visible{outline:2px solid #3E5243;outline-offset:2px}"
+    },
+    {
+      "name": "Settings row",
+      "kind": "custom",
+      "description": "Native settings pattern; light-mode panel translation only. Browser focus is panel-only.",
+      "html": "<button class=\"ds-settings\"><span>Reconstruction computer<small>Free local 3D processing</small></span><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m9 5 7 7-7 7\"/></svg></button>",
+      "css": ".ds-settings{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:60px;width:100%;padding:12px 0;border:0;border-bottom:1px solid #D6CEBF;background:none;text-align:left;color:#292C25;font:500 16px/1.4 system-ui}.ds-settings small{display:block;font:400 13px/1.4 system-ui;color:#615F56}.ds-settings:hover{opacity:.9}.ds-settings:active{opacity:.7}.ds-settings:focus-visible{outline:2px solid #3E5243;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Your own dressing room",
+    "overview": "Thread places a chosen character and owned clothing within an authored native 3D room. Warm plaster and oak provide the setting; restrained moss tint identifies actions and selection. Photographs and garment colors supply personal variation. Thread remains a working name.\n\nThis is a source milestone for React Native / Expo iOS and Android phones, with native stacks, three bottom tabs and focused tasks. It records implemented rules rather than visual approval. Tablet layouts are outside the product target; existing wardrobe storage, backup/sync and reconstruction privacy remain infrastructure.",
+    "keyCharacteristics": [
+      "Warm light and dark UI roles, separate from lit 3D materials.",
+      "Character and room views paired with real wardrobe data and photo rails.",
+      "Concise Profile settings and disclosed secondary outfit tools.",
+      "Explicit distinction between custom avatars, reconstructed heads and clothing previews."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Pair Rule",
+        "body": "Resolve foreground and background together from the active theme; primary and on-primary change together in dark mode.",
+        "section": "colors"
+      },
+      {
+        "name": "The Material Boundary Rule",
+        "body": "UI colors identify controls; room material colors describe lit geometry. A shared hex does not make these roles interchangeable.",
+        "section": "colors"
+      },
+      {
+        "name": "The Preview Truth Rule",
+        "body": "Keep category shapes, saved photo references, reconstructed surfaces and wearable garments distinct. Room decoration is not the owned inventory.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do resolve interface colors through useTheme in both appearances.",
+      "Do retain native navigation, accessible control names and system text scaling.",
+      "Do preserve clothing photo aspect ratios and provenance labels.",
+      "Do distinguish saved looks from wear history.",
+      "Do retain category buttons and the inventory alternative alongside 3D targeting."
+    ],
+    "donts": [
+      "Don't portray category meshes or a standard preview body as measured fit.",
+      "Don't treat an image reference or a valid head GLB as a complete character.",
+      "Don't use browser asset previews or source checks as native visual-review evidence."
+    ]
+  }
+}

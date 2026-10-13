@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Thread",
+    "slug": "ai-wearable-cloth",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.threadcompanion.wardrobe",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "allowBackup": false,
+      "package": "com.threadcompanion.wardrobe",
+      "predictiveBackGestureEnabled": true
+    },
+    "plugins": [
+      "./plugins/with-private-captures.cjs",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos of your clothes or a personal portrait for your private wardrobe.",
+          "cameraPermission": "Photograph clothes to add them to your wardrobe.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "recordAudioAndroid": false,
+          "cameraPermission": "Capture overlapping photos of your face, body or clothes for private local reconstruction."
+        }
+      ]
+    ],
+    "scheme": "thread",
+    "extra": {
+      "eas": {
+        "projectId": "2177adde-8ee3-401f-aa14-d3068980e2e7"
+      }
+    },
+    "owner": "elshorbagys-team"
+  }
+}

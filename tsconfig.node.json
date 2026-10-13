@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": ".node-build"
+  },
+  "include": ["server/**/*.ts", "tests/**/*.ts", "src/domain/**/*.ts", "src/data/**/*.ts"]
+}

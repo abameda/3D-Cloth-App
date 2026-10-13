@@ -1,0 +1,13 @@
+{
+  "name": "Thread",
+  "projectRef": "omuxejbtzruopopxadvv",
+  "organizationId": "aiauunzmcjoruqjjkrsp",
+  "region": "eu-west-1",
+  "planAtCreation": "free",
+  "quotedMonthlyProjectCost": 0,
+  "createdAt": "2026-09-19T08:31:28.523353Z",
+  "billingConstraint": "User permits free-tier usage only. Do not upgrade plans or enable paid services without new authorization.",
+  "applicationSchemaStatus": "applied and isolation checks passed",
+  "migrationVersion": "20260919101506",
+  "accountDeletion": "deployed; token verified by Supabase Auth, with password reconfirmation"
+}

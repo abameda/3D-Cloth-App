@@ -1,0 +1,18 @@
+import React, { useState } from 'react';
+import { Alert, View } from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation';
+import { useInventory, useWardrobe } from '../store';
+import { OutfitBoard } from '../ui/OutfitBoard';
+import { Button, Chip, Empty, IconButton, Label, Screen, ui } from '../ui/primitives';
+import { useTheme } from '../ui/theme';
+
+export function LooksScreen() {
+  const { state, dispatch } = useWardrobe(); const inventory = useInventory(); const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>(); const t = useTheme(); const route=useRoute<RouteProp<RootStackParamList,'Looks'>>(); const [tab, setTab] = useState<'saved' | 'history'>(route.params?.view??'saved');
+  const saved = state.saved.filter(s => s.source === state.dataset).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const history = state.history.filter(h => h.source === state.dataset).sort((a, b) => b.wornAt.localeCompare(a.wornAt));
+  return <Screen><View style={ui.row}><Chip title="Saved looks" selected={tab === 'saved'} onPress={() => setTab('saved')} /><Chip title="Wear history" selected={tab === 'history'} onPress={() => setTab('history')} /></View>{state.dataset === 'example' && <Label muted size={13}>Example wardrobe · separate from your real looks</Label>}
+    {tab === 'saved' ? saved.length ? saved.map(look => <View key={look.id} style={{ gap: 12 }}><View style={ui.between}><View style={{ flex: 1 }}><Label size={22} weight="600">{look.name}</Label><Label size={13} muted>Saved {new Date(look.createdAt).toLocaleDateString()}</Label></View><IconButton icon="trash" label={`Delete saved look ${look.name}`} onPress={() => Alert.alert('Delete saved look?', 'Your clothes and wear history will stay.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => dispatch({ type: 'look/delete', id: look.id }) }])} /></View><OutfitBoard outfit={look.outfit} garments={inventory} compact /><Button title="Wear this look" secondary onPress={() => { dispatch({ type: 'outfit/set', outfit: look.outfit }); navigation.navigate('Main', { screen: 'Home' }); }} /></View>) : <Empty title="Keep a good combination" description="Save a look from Home and come back to it whenever it feels right."><Button title="Go Home" onPress={() => navigation.navigate('Main', { screen: 'Home' })} /></Empty> : history.length ? history.map(wear => <View key={wear.id} style={{ gap: 10, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: t.line }}><View style={ui.between}><View style={{ flex: 1 }}><Label size={19} weight="600">{new Date(wear.wornAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</Label><Label muted size={13}>{new Date(wear.wornAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</Label></View><IconButton icon="trash" label="Remove wear record" onPress={() => Alert.alert('Remove this wear record?', 'The stylist will no longer count this wear when avoiding recent repeats.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => dispatch({ type: 'wear/delete', id: wear.id }) }])} /></View><Label>{Object.values(wear.names).join(' · ')}</Label><Button title="Build from this look" secondary onPress={() => { dispatch({ type: 'outfit/set', outfit: wear.outfit }); navigation.navigate('Main', { screen: 'Home' }); }} /></View>) : <Empty title="Remember what worked" description="Tap “Wore this” in the studio after getting dressed. Saving a look alone never adds it to your history." />}
+  </Screen>;
+}
