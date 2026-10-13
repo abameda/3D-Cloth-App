@@ -2,6 +2,7 @@ import { mkdirSync,readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ReconstructionStore, createReconstructionServer, personalEngineIdentity, pythonReconstructionRunner } from './reconstruction';
 import { createStudio, pipelineRunner } from './studio';
+import { createDesktop } from './desktop';
 
 try {
   const port=Number(process.env.THREAD_RECONSTRUCTION_PORT??8790);
@@ -16,7 +17,7 @@ try {
   if(!tls&&!['127.0.0.1','localhost','::1'].includes(host))throw Error('LAN access needs a private TLS certificate');
   const studioRoot=resolve('.data/studio');mkdirSync(studioRoot,{recursive:true});
   const studio=createStudio({root:studioRoot,runner:pipelineRunner(process.cwd())});
-  const server=createReconstructionServer({root,store,runner:pythonReconstructionRunner(process.cwd()),identity:personalEngineIdentity(process.env.THREAD_RECONSTRUCTION_TOKEN??''),tls,studio});
-  server.listen(port,host,()=>console.log(`Thread local reconstruction engine ready over ${tls?'HTTPS':'loopback HTTP'} on port ${port}. Reconstruction service cost: $0.`));
+  const server=createReconstructionServer({root,store,runner:pythonReconstructionRunner(process.cwd()),identity:personalEngineIdentity(process.env.THREAD_RECONSTRUCTION_TOKEN??''),tls,studio,desktop:createDesktop({projectRoot:process.cwd()})});
+  server.listen(port,host,()=>{console.log(`Thread local reconstruction engine ready over ${tls?'HTTPS':'loopback HTTP'} on port ${port}. Reconstruction service cost: $0.`);console.log(`Thread Studio for Windows: ${tls?'https':'http'}://127.0.0.1:${port}/studio/ (this computer only)`);});
   server.on('error',error=>{const code=(error as NodeJS.ErrnoException).code;console.error(code==='EADDRNOTAVAIL'?'The configured Wi-Fi address is no longer on this computer. Update the local certificate and HTTPS address.':code==='EADDRINUSE'?'The reconstruction port is already in use. Keep the existing worker or choose an unused port.':'The local engine could not listen. Check the port and local setup.');process.exitCode=1;});
 }catch {console.error('Check the private token, port and local runtime. LAN access requires both TLS certificate/key paths.');process.exitCode=1;}

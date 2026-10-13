@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseImage } from './service';
-import { accessoryNameSchema, bodyRequestSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
+import { accessoryCategories, accessoryNameSchema, bodyRequestSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
 
 /** Runs the Windows asset factory (pipeline/). Each call resolves when its output file exists. */
 export interface StudioRunner {
@@ -15,7 +15,7 @@ export interface StudioRunner {
 
 /** Photos are stored as files beside the state, never inside state.json. */
 interface GarmentEntry { request: Omit<GarmentRequest, 'photos'>; photos?: { front: boolean; back: boolean }; sha256?: string; bytes?: number; bodySha256?: string }
-interface Accessory { name: string; category: 'hair' | 'shoes'; colors: string[]; sha256: string; bytes: number }
+interface Accessory { name: string; category: typeof accessoryCategories[number]; colors: string[]; sha256: string; bytes: number }
 interface OwnerState { profile?: BodyProfile; body?: { sha256: string; bytes: number }; accessories?: Accessory[]; garments: Record<string, GarmentEntry>; jobs: StudioJob[] }
 interface Queued { owner: string; job: StudioJob }
 
@@ -60,9 +60,9 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
 }
 
 /** thread extras of the first node that has them (category, colours) from a GLB's JSON chunk. */
-function glbExtras(data: Buffer): { colors?: string[] } {
+function glbExtras(data: Buffer): { category?: string; colors?: string[] } {
   try {
-    const json = JSON.parse(data.subarray(20, 20 + data.readUInt32LE(12)).toString()) as { nodes?: { extras?: { thread?: { colors?: string[] } } }[] };
+    const json = JSON.parse(data.subarray(20, 20 + data.readUInt32LE(12)).toString()) as { nodes?: { extras?: { thread?: { category?: string; colors?: string[] } } }[] };
     return json.nodes?.find(node => node.extras?.thread)?.extras?.thread ?? {};
   } catch { return {}; }
 }
@@ -140,7 +140,8 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
           if (!accessoryNameSchema.safeParse(name).success) continue;
           const data = await readFile(join(bodyDir, file));
           const extras = glbExtras(data);
-          state.accessories.push({ name, category: name === 'hair' ? 'hair' : 'shoes', colors: extras.colors ?? [], sha256: sha(data), bytes: data.length });
+          const category = accessoryCategories.find(c => c === extras.category) ?? (name === 'hair' ? 'hair' : 'shoes');
+          state.accessories.push({ name, category, colors: extras.colors ?? [], sha256: sha(data), bytes: data.length });
         }
         // Garments are fitted to one exact body: re-drape everything on the new shape.
         for (const garmentId of Object.keys(state.garments)) enqueue(owner, state, 'garment', garmentId);

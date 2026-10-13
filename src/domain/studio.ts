@@ -51,11 +51,12 @@ export const studioJobSchema = z.object({
   status: z.enum(['queued', 'running', 'done', 'failed']), stage: z.string(), error: z.string().nullable(), updated: z.number(),
 });
 export type StudioJob = z.infer<typeof studioJobSchema>;
-/** Accessories produced with the body: hair and colour-matched shoe stand-ins. */
-export const accessoryNameSchema = z.string().regex(/^(hair|shoes_shoes0[1-6])$/);
+/** Accessories produced with the body: hair, colour-matched shoe stand-ins and the neutral base layer. */
+export const accessoryNameSchema = z.string().regex(/^(hair|shoes_shoes0[1-6]|base_top|base_bottom)$/);
+export const accessoryCategories = ['hair', 'shoes', 'base_top', 'base_bottom'] as const;
 export const kitManifestSchema = z.object({
   body: assetSchema.extend({ profile: bodyProfileSchema }).nullable(),
-  accessories: z.array(assetSchema.extend({ name: accessoryNameSchema, category: z.enum(['hair', 'shoes']), colors: z.array(z.string()).max(13) })).default([]),
+  accessories: z.array(assetSchema.extend({ name: accessoryNameSchema, category: z.enum(accessoryCategories), colors: z.array(z.string()).max(13) })).default([]),
   garments: z.array(assetSchema.extend({ garmentId: z.string(), category: z.enum(categories), bodySha256: z.string() })),
   jobs: z.array(studioJobSchema),
 });
@@ -101,7 +102,7 @@ export function specFromShape(shape: GarmentShape): GarmentSpec {
     if (shape.fit) params['pencil-skirt.flare'] = { slim: 0.9, regular: 1.0, loose: 1.3 }[shape.fit];
   } else {
     if (shape.length && pantsLength[shape.length]) params['pants.length'] = pantsLength[shape.length]!;
-    if (shape.fit) { params['pants.width'] = { slim: 1.0, regular: 1.1, loose: 1.3 }[shape.fit]; params['pants.flare'] = { slim: 0.85, regular: 1.0, loose: 1.0 }[shape.fit]; }
+    if (shape.fit) { params['pants.width'] = { slim: 1.0, regular: 1.1, loose: 1.3 }[shape.fit]; params['pants.flare'] = { slim: 0.7, regular: 0.8, loose: 1.0 }[shape.fit]; }  // flare 1.0 is a straight, wide leg
   }
   return { preset: shape.silhouette, params };
 }

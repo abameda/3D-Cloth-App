@@ -67,10 +67,24 @@ State lives in `.data/studio/<owner>/`, which is git-ignored and erasable with `
 | `sim/mobile_sim_props.yaml` (default) | All garments | 1.6 cm cloth vertex spacing (GarmentCode default: 1 cm): ~2.5× fewer vertices, faster drape |
 | `sim/mobile_fast_sim_props.yaml` | Bottoms on CPU | Cloth self-collision off. On CPU, self-collision between two close trouser legs costs about 9 s per frame; with a working CUDA GPU, use the default profile |
 
-### Viewer
+### Thread Studio (inspect and operate everything on Windows)
 
-Start the `asset-viewer` launch configuration (`python -m http.server 8765 --directory pipeline`), then open `http://localhost:8765/viewer/index.html?files=me/body.glb,me/shirt.glb`.
+Double-click `Thread-Studio.cmd` in the project root. It creates a private engine token on first run, starts the local engine (the same process the phone talks to) and opens the studio at `http://127.0.0.1:8790/studio/`. Keep its window open; close it to stop.
 
+- **Kit**: your studio kit (exactly what the phone downloads) or any command-line output folder in `pipeline/output`.
+- **Outfit**: pick a top, bottom, outerwear, one-piece and shoes; empty slots show the neutral base layer. Dressing, layering, tucking and skin hiding run the phone's own rules (`src/domain/kitDressing.ts`).
+- **Scene**: camera presets (front, ¾, side, back, face, torso, feet), turntable, poses (bind, relaxed breathing, walk, arms out, knee bend), all 52 facial expressions, four lighting setups, wireframe, skeleton, and a switch to show the skin hidden under cloth.
+- **Factory**: enter measurements (and optionally a selfie) to build your body; add garments with flat-lay photos. Jobs and their stages appear live; finished pieces load automatically.
+- **Screenshot** saves a PNG of the current view.
+
+### Body outputs (since 13 Oct 2026)
+
+Besides `body.glb`, `hair.glb` and the shoe stand-ins, every body build writes:
+
+- `base_bottom.glb` (trunks or briefs) and, for women, `base_top.glb` (bralette): skin-tight underwear cut from the body surface along smooth outlines, skinned with the body's own weights. The phone and studio show them only for empty slots.
+- `skin_atlas.jpg`: CC0 MakeHuman skin photography for the right sex and age, tone-matched to the person (or to the selfie), with the head given half of the texture. A selfie is projected onto the face and colour-matched at its edges; the scalp under the hair takes the hair colour.
+
+Eye textures are recoloured to natural iris tones (MakeHuman's own "brown" reads orange-red).
 ## Measured results (13 Oct 2026)
 
 **Measurement code vs GarmentCode's published reference bodies** (mean_all, mean_female, mean_male):

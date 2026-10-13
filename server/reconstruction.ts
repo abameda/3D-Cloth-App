@@ -10,6 +10,7 @@ import { reconstructionInputSchema, type ReconstructionInput, type Reconstructio
 import { validateFaceScan } from '../src/domain/faceScan';
 import { parseImage } from './service';
 import type { Studio } from './studio';
+import type { Desktop } from './desktop';
 
 type Row={id:string;owner:string;request_id:string;digest:string;kind:'face'|'body'|'garment';garment_id:string|null;status:ReconstructionJob['status'];stage:string;error:string|null;attempt:number;created:number;updated:number};
 export class ReconstructionStore {
@@ -69,7 +70,7 @@ async function requestBody(req:IncomingMessage){
   return input;
 }
 
-export function createReconstructionServer(options:{root:string;store:ReconstructionStore;runner:LocalRunner;identity:(token:string)=>Promise<string>;tls?:HttpsOptions;studio?:Studio}){
+export function createReconstructionServer(options:{root:string;store:ReconstructionStore;runner:LocalRunner;identity:(token:string)=>Promise<string>;tls?:HttpsOptions;studio?:Studio;desktop?:Desktop}){
   const root=resolve(options.root);let active:{id:string;controller:AbortController;done:Promise<void>}|undefined;
   const uploads=new Map<string,Promise<void>>(),erasing=new Set<string>();
   let closing=false;
@@ -107,13 +108,16 @@ export function createReconstructionServer(options:{root:string;store:Reconstruc
   const transport=options.tls?createHttpsServer.bind(null,options.tls):createServer;
   const server=transport(async(req,res)=>{
     const reply=(status:number,value:unknown)=>{if(!res.destroyed&&!res.writableEnded){res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));}};
-    let owner:string;try{if(req.headers.origin)throw Error('Native client required');owner=await options.identity((req.headers.authorization??'').replace(/^Bearer /,''));if(!owner||owner.length>200)throw Error('Invalid identity');}catch{reply(401,{error:'Connect your private reconstruction computer first.'});return;}
+    if(options.desktop&&await options.desktop.serve(req,res))return;
+    // Browsers are refused (cross-site request protection), except the desktop studio page served by this engine to this computer.
+    let owner:string;try{if(req.headers.origin&&!options.desktop?.trustedOrigin(req))throw Error('Native client required');owner=await options.identity((req.headers.authorization??'').replace(/^Bearer /,''));if(!owner||owner.length>200)throw Error('Invalid identity');}catch{reply(401,{error:'Connect your private reconstruction computer first.'});return;}
     const now=Date.now();for(const[key,value]of rates)if(value.until<now)rates.delete(key);
     if(!rates.has(owner)&&rates.size>=1000){reply(503,{error:'The local engine is busy.'});return;}
     const rate=rates.get(owner)??{n:0,until:now+60000};rates.set(owner,rate);if(++rate.n>120){reply(429,{error:'Wait before refreshing again.'});return;}
     const path=(req.url??'').split('?')[0],match=/^\/v1\/reconstruction\/jobs\/([0-9a-f-]{36})(\/artifact|\/retry|\/photos\/([0-9]{1,2}))?$/.exec(path);
     try{
       if(options.studio&&await options.studio.handle(req,res,owner,path))return;
+      if(options.desktop&&await options.desktop.handle(req,res,path))return;
       if(path==='/v1/reconstruction/capabilities'&&req.method==='GET'){reply(200,{engine:'local-colmap-openmvs',paidReconstructionServices:false,photoReconstruction:true,runtimeReady:['.runtime/colmap/bin/bin/colmap.exe','.runtime/openmvs/bin/vc17/x64/Release/TextureMesh.exe','.runtime/reconstruction-python/Scripts/python.exe','.runtime/reconstruction-models/models/u2net/u2net.onnx'].every(path=>existsSync(resolve(path))),depthFusion:false,clothFitting:false,clothSimulation:false});return;}
       if(path==='/v1/reconstruction/jobs'&&req.method==='GET'){reply(200,{jobs:await Promise.all(options.store.list(owner).map(publicJob))});return;}
       if(path==='/v1/reconstruction/jobs'&&req.method==='DELETE'){

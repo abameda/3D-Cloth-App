@@ -7,7 +7,7 @@ test('photo shapes map to bounded GarmentCode parameters', () => {
   assert.deepEqual(specFromShape({ silhouette: 'tshirt', sleeve: 'short', length: 'hip', fit: 'loose', neckline: 'v' }), {
     preset: 'tshirt', params: { 'shirt.length': 1.5, 'shirt.width': 1.2, 'sleeve.sleeveless': false, 'sleeve.length': 0.3, 'collar.f_collar': 'VNeckHalf' } });
   assert.deepEqual(specFromShape({ silhouette: 'trousers', length: 'ankle', fit: 'slim' }), {
-    preset: 'trousers', params: { 'pants.length': 0.88, 'pants.width': 1.0, 'pants.flare': 0.85 } });
+    preset: 'trousers', params: { 'pants.length': 0.88, 'pants.width': 1.0, 'pants.flare': 0.7 } });
   // Lengths that do not exist for a silhouette are ignored instead of producing invalid geometry.
   assert.deepEqual(specFromShape({ silhouette: 'shorts', length: 'cropped' }), { preset: 'shorts', params: {} });
 });

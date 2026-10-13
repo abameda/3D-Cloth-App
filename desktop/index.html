@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thread Studio</title>
+<link rel="stylesheet" href="/studio/studio.css">
+<script type="importmap">{"imports":{"three":"/studio/vendor/three/build/three.module.js","three/addons/":"/studio/vendor/three/examples/jsm/"}}</script>
+<script type="module" src="/studio/studio.js"></script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>Thread Studio <small>Windows</small></div>
+  <label class="source">Kit
+    <select id="source" aria-label="Kit to inspect"></select>
+  </label>
+  <button id="reload" class="ghost" title="Reload the kit from disk">Reload</button>
+  <div id="status" class="status" role="status" aria-live="polite">Starting…</div>
+</header>
+
+<aside id="wardrobe" class="panel" aria-label="Outfit">
+  <h2>Outfit</h2>
+  <div id="slots"></div>
+  <label class="check"><input type="checkbox" id="base" checked> Underwear in empty slots</label>
+  <label class="check"><input type="checkbox" id="hair" checked> Hair</label>
+  <div id="warnings"></div>
+  <h2>Scene</h2>
+    <div id="motion" class="scene">
+    <label>Pose <select id="pose">
+      <option value="bind">Bind pose (A)</option>
+      <option value="relaxed" selected>Relaxed, breathing</option>
+      <option value="walk">Walk in place</option>
+      <option value="reach">Arms out (sleeve check)</option>
+      <option value="sit">Knee bend</option>
+    </select></label>
+    <label>Face <select id="expression"><option value="">Neutral (blinks)</option></select></label>
+    <label>Light <select id="light">
+      <option value="studio">Studio</option>
+      <option value="daylight">Daylight</option>
+      <option value="evening">Warm evening</option>
+      <option value="flat">Flat (inspect colour)</option>
+    </select></label>
+    <label class="check"><input type="checkbox" id="wire"> Wireframe</label>
+    <label class="check"><input type="checkbox" id="bones"> Skeleton</label>
+    <label class="check"><input type="checkbox" id="masks" checked> Hide covered skin</label>
+  </div>
+  <h2>Inspect</h2>
+  <dl id="details" class="details"></dl>
+</aside>
+
+<main id="stage" aria-label="3D preview">
+  <div id="views" class="toolbar" role="toolbar" aria-label="Camera">
+    <button data-view="front">Front</button>
+    <button data-view="three">¾</button>
+    <button data-view="side">Side</button>
+    <button data-view="back">Back</button>
+    <button data-view="face">Face</button>
+    <button data-view="torso">Torso</button>
+    <button data-view="feet">Feet</button>
+    <button id="spin" aria-pressed="false">Turntable</button>
+    <button id="shot" title="Save a PNG of this view">Screenshot</button>
+  </div>
+  <div id="hud" class="hud" aria-hidden="true"></div>
+  <div id="empty" class="empty" hidden></div>
+</main>
+
+<aside id="factory" class="panel" aria-label="Asset factory">
+  <h2>Your body</h2>
+  <form id="bodyForm" class="form">
+    <div class="row">
+      <label>Sex <select name="sex"><option value="female">Female</option><option value="male">Male</option></select></label>
+      <label>Age <input name="age" type="number" min="16" max="90" value="30" required></label>
+    </div>
+    <div class="row">
+      <label>Height cm <input name="height_cm" type="number" min="130" max="220" step="0.5" required></label>
+      <label>Weight kg <input name="weight_kg" type="number" min="35" max="200" step="0.5" placeholder="optional"></label>
+    </div>
+    <div class="row three">
+      <label>Chest <input name="chest_cm" type="number" min="60" max="160" step="0.5" placeholder="cm"></label>
+      <label>Waist <input name="waist_cm" type="number" min="50" max="160" step="0.5" placeholder="cm"></label>
+      <label>Hips <input name="hips_cm" type="number" min="60" max="170" step="0.5" placeholder="cm"></label>
+    </div>
+    <label>Front selfie (optional) <input name="selfie" type="file" accept="image/*"></label>
+    <label class="check"><input type="checkbox" name="keepFace" checked> Keep the selfie already on this computer</label>
+    <button type="submit">Build my body</button>
+  </form>
+
+  <h2>Add a garment</h2>
+  <form id="garmentForm" class="form">
+    <label>Name <input name="name" maxlength="60" placeholder="e.g. Navy oxford shirt" required></label>
+    <div class="row">
+      <label>Slot <select name="category"><option value="top">Top</option><option value="bottom">Bottom</option><option value="outerwear">Outerwear</option></select></label>
+      <label>Pattern <select name="preset">
+        <option value="tshirt">T-shirt</option><option value="longsleeve">Long sleeve</option><option value="overshirt">Overshirt</option>
+        <option value="trousers">Trousers</option><option value="shorts">Shorts</option><option value="skirt">Skirt</option>
+      </select></label>
+    </div>
+    <label>Colour (used without photos) <input name="color" type="color" value="#30415f"></label>
+    <div class="row">
+      <label>Flat-lay front <input name="front" type="file" accept="image/*"></label>
+      <label>Back (optional) <input name="back" type="file" accept="image/*"></label>
+    </div>
+    <button type="submit">Sew and drape</button>
+  </form>
+
+  <h2>Factory jobs</h2>
+  <ol id="jobs" class="jobs"></ol>
+</aside>
+
+<dialog id="tokenDialog">
+  <form method="dialog" id="tokenForm">
+    <h2>Connect to the local engine</h2>
+    <p>Paste the engine token from <code>.env.local-reconstruction</code>, or start the studio with <code>Thread-Studio.cmd</code>, which signs you in automatically.</p>
+    <input id="tokenInput" type="password" autocomplete="off" minlength="32" required aria-label="Engine token">
+    <button type="submit">Connect</button>
+  </form>
+</dialog>
+</body>
+</html>

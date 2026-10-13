@@ -157,14 +157,35 @@ EYE_COLOURS = {'brown': (92, 56, 38), 'brownlight': (140, 96, 60), 'blue': (88, 
                'ice': (170, 190, 205)}
 
 
-def bake_face_texture(positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, face_uv: np.ndarray,
-                      rgb: np.ndarray, photo_points: np.ndarray, size: int = 2048):
-    """Skin texture: the selfie projected onto the face, feathered into a body tone sampled from the cheeks.
-    The MakeHuman head UV island is tiny, so UVs are re-laid out: the head island fills the whole texture and
-    every other (plain-tone) triangle maps to a tone-only corner.
-    Returns (texture RGB, new uv, new face_uv, skin sRGB 0-1, eye material name)."""
+
+def face_colours(rgb: np.ndarray, photo_points: np.ndarray) -> tuple[tuple, str]:
+    """(skin sRGB 0-1 from both cheeks, MakeHuman eye material nearest the photographed iris)."""
+    samples = []
+    for index in (205, 425, 50, 280):  # cheeks (MediaPipe 205 / 425 and neighbours), robust median
+        x, y = photo_points[index, :2].astype(int)
+        samples.append(rgb[max(0, y - 6):y + 6, max(0, x - 6):x + 6].reshape(-1, 3))
+    tone = np.median(np.concatenate(samples), axis=0)
+    # Iris colour: the ring between pupil and iris edge (MediaPipe 468-472 left, 473-477 right), median.
+    iris = []
+    yy, xx = np.mgrid[0:rgb.shape[0], 0:rgb.shape[1]]
+    for centre_index in (468, 473):
+        centre = photo_points[centre_index, :2]
+        radius = np.linalg.norm(photo_points[centre_index + 1:centre_index + 5, :2] - centre, axis=1).mean()
+        distance = np.hypot(xx - centre[0], yy - centre[1])
+        iris.append(rgb[(distance > 0.45 * radius) & (distance < 0.9 * radius)])
+    iris_colour = np.median(np.concatenate(iris), axis=0)
+    eye = min(EYE_COLOURS, key=lambda name: np.linalg.norm(np.array(EYE_COLOURS[name]) - iris_colour))
+    if np.linalg.norm(iris_colour - tone) < 45:  # eyes closed/squinting or too dark to read: keep the default
+        eye = 'brown'
+    return tuple((tone / 255).round(4).tolist()), eye
+
+
+def project_face(atlas: np.ndarray, positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, face_uv: np.ndarray,
+                 rgb: np.ndarray, photo_points: np.ndarray) -> np.ndarray:
+    """The selfie projected onto the face triangles of the skin atlas, feathered towards the landmark hull edge
+    and away from camera-oblique surfaces. Each photo patch is colour-balanced to the atlas it replaces."""
     import cv2
-    uv, face_uv = relayout_head_uv(positions, faces, uv, face_uv)
+    size = atlas.shape[0]
     corr = np.load(DATA)
     model = (positions[corr['vertices']] * corr['weights'][..., None]).sum(1)
     photo = photo_points[corr['landmark']].copy()
@@ -179,18 +200,8 @@ def bake_face_texture(positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, 
     pixel = np.stack([projected[:, 0], -projected[:, 1]], axis=1)
     view = rotation.T @ np.array([0, 0, 1.0])  # camera direction in model space
 
-    # Skin tone from both cheeks (MediaPipe 205 / 425), robust median.
-    h, w = rgb.shape[:2]
-    samples = []
-    for index in (205, 425, 50, 280):
-        x, y = photo_points[index, :2].astype(int)
-        samples.append(rgb[max(0, y - 6):y + 6, max(0, x - 6):x + 6].reshape(-1, 3))
-    tone = np.median(np.concatenate(samples), axis=0)
-    atlas = np.tile(tone.astype(np.uint8), (size, size, 1))
     weight_map = np.zeros((size, size), np.float32)
     colour_map = np.zeros((size, size, 3), np.float32)
-
-    # Face region: inside the landmark hull, facing the camera; weight fades towards the hull edge.
     hull = cv2.convexHull(photo_points[:468, :2].astype(np.float32))
     tri = positions[faces]
     normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
@@ -199,8 +210,7 @@ def bake_face_texture(positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, 
     inradius = np.sqrt(cv2.contourArea(hull) / np.pi)
     for f in np.nonzero(facing > 0.25)[0]:
         src = pixel[faces[f]].astype(np.float32)
-        centre = src.mean(0)
-        inside = cv2.pointPolygonTest(hull, (float(centre[0]), float(centre[1])), True)
+        inside = cv2.pointPolygonTest(hull, (float(src.mean(0)[0]), float(src.mean(0)[1])), True)
         if inside <= 0:
             continue
         dst = np.stack([uv[face_uv[f], 0] * size, (1 - uv[face_uv[f], 1]) * size], axis=1).astype(np.float32)
@@ -212,42 +222,12 @@ def bake_face_texture(positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, 
         patch = cv2.warpAffine(rgb, warp, (x1 - x0, y1 - y0), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         mask = np.zeros((y1 - y0, x1 - x0), np.float32)
         cv2.fillConvexPoly(mask, np.round(local).astype(np.int32), 1.0)
-        alpha = min(1.0, inside / (0.25 * inradius)) * min(1.0, (facing[f] - 0.25) / 0.35)
-        region = mask * alpha
+        region = mask * min(1.0, inside / (0.25 * inradius)) * min(1.0, (facing[f] - 0.25) / 0.35)
         weight_map[y0:y1, x0:x1] = np.maximum(weight_map[y0:y1, x0:x1], region)
         colour_map[y0:y1, x0:x1] = np.where(region[..., None] > 0, patch, colour_map[y0:y1, x0:x1])
     weight_map = cv2.GaussianBlur(weight_map, (0, 0), 6)
-    atlas = (colour_map * weight_map[..., None] + atlas * (1 - weight_map[..., None])).astype(np.uint8)
-
-    # Eye colour: mean iris colour around MediaPipe iris centres (468, 473), nearest MakeHuman material.
-    # Iris colour: the ring between pupil and iris edge (MediaPipe 468-472 left, 473-477 right), median.
-    iris = []
-    yy, xx = np.mgrid[0:rgb.shape[0], 0:rgb.shape[1]]
-    for centre_index in (468, 473):
-        centre = photo_points[centre_index, :2]
-        radius = np.linalg.norm(photo_points[centre_index + 1:centre_index + 5, :2] - centre, axis=1).mean()
-        distance = np.hypot(xx - centre[0], yy - centre[1])
-        iris.append(rgb[(distance > 0.45 * radius) & (distance < 0.9 * radius)])
-    iris_colour = np.median(np.concatenate(iris), axis=0)
-    eye = min(EYE_COLOURS, key=lambda name: np.linalg.norm(np.array(EYE_COLOURS[name]) - iris_colour))
-    if np.linalg.norm(iris_colour - tone) < 45:  # eyes closed/squinting or too dark to read: keep the default
-        eye = 'brown'
-    return atlas, uv, face_uv, tuple((tone / 255).round(4).tolist()), eye
-
-
-def relayout_head_uv(positions: np.ndarray, faces: np.ndarray, uv: np.ndarray, face_uv: np.ndarray):
-    """Per-corner UVs: the face's own UV island (the one holding the nose tip) scaled to fill [0.02, 0.98]^2;
-    every other triangle collapses to the tone-only corner (0.005, 0.005)."""
-    import scipy.sparse as sp
-    from scipy.sparse.csgraph import connected_components
-    # Triangles sharing a UV corner belong to the same island.
-    rows = np.repeat(np.arange(len(faces)), 3)
-    incidence = sp.coo_matrix((np.ones(len(rows)), (rows, face_uv.reshape(-1))), shape=(len(faces), len(uv))).tocsr()
-    _, island = connected_components(incidence @ incidence.T, directed=False)
-    nose = np.argmax(positions[:, 2] - 10 * (positions[:, 1] < positions[:, 1].max() - 0.25))  # most forward head point
-    face = island == island[np.nonzero((faces == nose).any(axis=1))[0][0]]
-    in_face = np.zeros(len(uv), bool); in_face[face_uv[face].reshape(-1)] = True  # a UV index lives in one island
-    lo, hi = uv[in_face].min(0), uv[in_face].max(0)
-    table = np.full_like(uv, 0.005)
-    table[in_face] = 0.02 + 0.96 * (uv[in_face] - lo) / (hi - lo).max()
-    return table, face_uv  # same indices: vertices stay shared, only the UV table changes
+    # Match the photo's mean colour to the skin it replaces at the feathered rim, so the seam disappears.
+    rim = (weight_map > 0.2) & (weight_map < 0.6)
+    if rim.any():
+        colour_map *= atlas[rim].mean(0) / np.maximum(colour_map[rim].mean(0), 1)
+    return np.clip(colour_map * weight_map[..., None] + atlas * (1 - weight_map[..., None]), 0, 255).astype(np.uint8)

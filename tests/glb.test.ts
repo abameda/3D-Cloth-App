@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readGlb } from '../src/domain/glb';
 
 function load(path: string) {
@@ -31,6 +31,18 @@ test('kit garments declare their category and body coverage', () => {
   const thread = json.nodes?.find(node => node.extras?.thread)?.extras?.thread as { category: string; coversBodyTriangles: string };
   assert.equal(thread.category, 'top');
   assert.ok(thread.coversBodyTriangles.length > 100);
+});
+
+test('every bundled kit piece hides skin on this exact body build', () => {
+  // A mask made for another body build punches holes in the wrong places (seen on 13 Oct: holes across the face).
+  const body = readGlb(load('assets/avatar/kit/body.glb')) as unknown as { meshes: { primitives: { indices: number; material: number }[] }[]; materials: { name: string }[]; accessors: { count: number }[] };
+  const skin = body.meshes[0].primitives.find(p => body.materials[p.material].name === 'skin')!;
+  const triangles = body.accessors[skin.indices].count / 3;
+  for (const name of readdirSync('assets/avatar/kit').filter(f => f.endsWith('.glb') && !['body.glb', 'hair.glb'].includes(f))) {
+    const thread = readGlb(load(`assets/avatar/kit/${name}`)).nodes?.find(node => node.extras?.thread)?.extras?.thread as { bodyTriangles: number; coversBodyTriangles: string };
+    assert.equal(thread.bodyTriangles, triangles, name);
+    assert.equal(Buffer.from(thread.coversBodyTriangles, 'base64').length, Math.ceil(triangles / 8), name);
+  }
 });
 
 test('readGlb rejects truncated files and external resources', () => {

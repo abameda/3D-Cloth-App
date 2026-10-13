@@ -22,7 +22,8 @@ PRESETS: dict[str, dict] = {
                    'shirt.length': 1.25, 'shirt.width': 1.05, 'sleeve.length': 0.95, 'sleeve.sleeveless': False},
     'overshirt': {'meta.upper': 'Shirt', 'meta.bottom': None, 'meta.wb': None,
                   'shirt.length': 1.45, 'shirt.width': 1.2, 'sleeve.length': 0.95, 'sleeve.sleeveless': False},
-    'trousers': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'pants.length': 0.88},
+    # GarmentCode's straight leg (flare 1.0) reads as wide-leg; regular trousers taper towards the hem.
+    'trousers': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'pants.length': 0.88, 'pants.flare': 0.8},
     'shorts': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'pants.length': 0.35},
     'skirt': {'meta.upper': None, 'meta.bottom': 'PencilSkirt', 'meta.wb': 'StraightWB'},
 }

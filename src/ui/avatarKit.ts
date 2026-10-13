@@ -4,7 +4,7 @@ import { File } from 'expo-file-system';
 import * as THREE from 'three';
 import type { AvatarOutfit } from '../domain/avatar';
 import { readGlb } from '../domain/glb';
-import type { Category } from '../domain/types';
+import { kitLayer, tucked, visibleTriangles, wornItems, type CoverageMask, type KitItem } from '../domain/kitDressing';
 import { disposeAvatar } from './avatarScene';
 import { parseNativeGlb } from './nativeGltf';
 
@@ -13,12 +13,11 @@ import { parseNativeGlb } from './nativeGltf';
  * Garments share the body's skeleton, so they move with it; each declares which body triangles it
  * covers so hidden skin cannot poke through cloth.
  */
-export type KitCategory = Category | 'hair';
-/** colors: wardrobe colours a stand-in represents (e.g. white trainers for White shoes). */
-export interface KitGarment { id: string; category: KitCategory; uri: string; garmentId?: string; colors?: string[] }
+export type { KitCategory } from '../domain/kitDressing';
+export interface KitGarment extends KitItem { uri: string }
 export interface AvatarKit { source: 'demo' | 'personal'; body: string; garments: KitGarment[] }
 
-interface LoadedGarment { asset: KitGarment; mesh: THREE.SkinnedMesh; covers?: Uint8Array; material: THREE.MeshStandardMaterial; textured: boolean; tuck?: number }
+interface LoadedGarment { asset: KitGarment; mesh: THREE.SkinnedMesh; covers?: CoverageMask; material: THREE.MeshStandardMaterial; textured: boolean; tuck?: number }
 export interface LoadedKit {
   /** body: the skin primitive; faceParts: every body primitive (skin, eyes, brows, lashes) sharing the expressions. */
   root: THREE.Group; body: THREE.SkinnedMesh; faceParts: THREE.SkinnedMesh[]; bodyIndex: THREE.BufferAttribute;
@@ -26,8 +25,14 @@ export interface LoadedKit {
   wearing: string; cleanup: () => void;
 }
 
-// Layer order for overlapping cloth: inner layers render first and are slightly pushed back.
-const LAYER: Partial<Record<KitCategory, number>> = { bottom: 0, onepiece: 0, top: 1, outerwear: 2 };
+/** Cloth is double-sided: its inside (seen through necklines and hems) is shaded darker, like real fabric. */
+export function shadeClothInside(material: THREE.MeshStandardMaterial) {
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>',
+      '#include <map_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb *= 0.45;');
+  };
+  material.customProgramCacheKey = () => 'thread-cloth-inside';
+}
 
 export async function demoKit(): Promise<AvatarKit> {
   const resolve = async (module: number) => {
@@ -42,6 +47,7 @@ export async function demoKit(): Promise<AvatarKit> {
       { id: 'demo-top', category: 'top', uri: await resolve(require('../../assets/avatar/kit/top.glb')) },
       { id: 'demo-bottom', category: 'bottom', uri: await resolve(require('../../assets/avatar/kit/bottom.glb')) },
       { id: 'demo-hair', category: 'hair', uri: await resolve(require('../../assets/avatar/kit/hair.glb')) },
+      { id: 'demo-base-bottom', category: 'base_bottom', uri: await resolve(require('../../assets/avatar/kit/base-bottom.glb')) },
       { id: 'demo-shoes-white', category: 'shoes', colors: ['White', 'Beige', 'Unknown', 'Grey', 'Green', 'Pink'], uri: await resolve(require('../../assets/avatar/kit/shoes-white.glb')) },
       { id: 'demo-shoes-navy', category: 'shoes', colors: ['Navy', 'Blue', 'Purple'], uri: await resolve(require('../../assets/avatar/kit/shoes-navy.glb')) },
       { id: 'demo-shoes-black', category: 'shoes', colors: ['Black'], uri: await resolve(require('../../assets/avatar/kit/shoes-black.glb')) },
@@ -82,12 +88,13 @@ export async function loadAvatarKit(kit: AvatarKit): Promise<LoadedKit> {
       mesh.bind(body.skeleton, mesh.bindMatrix);  // identical bind pose: drive the cloth with the body's bones
       root.add(mesh);
       disposeAvatar(file.gltf.scene);
-      const material = materialOf(mesh);
-      material.polygonOffset = true; material.polygonOffsetFactor = -(LAYER[asset.category] ?? 1); material.polygonOffsetUnits = -1;
-      mesh.renderOrder = 1 + (LAYER[asset.category] ?? 1);
-      const encoded = (mesh.userData.thread as { coversBodyTriangles?: string } | undefined)?.coversBodyTriangles;
+      const material = materialOf(mesh), layer = kitLayer[asset.category] ?? 1;
+      material.polygonOffset = true; material.polygonOffsetFactor = -layer; material.polygonOffsetUnits = -1;
+      mesh.renderOrder = 2 + layer;
+      if (material.side === THREE.DoubleSide) shadeClothInside(material);
+      const thread = mesh.userData.thread as { coversBodyTriangles?: string; bodyTriangles?: number } | undefined;
       garments.push({ asset, mesh, material, textured: !!material.map, tuck: mesh.morphTargetDictionary?.tuck,
-        covers: encoded ? toByteArray(encoded) : undefined });
+        covers: thread?.coversBodyTriangles ? { bits: toByteArray(thread.coversBodyTriangles), bodyTriangles: thread.bodyTriangles } : undefined });
     }
     const bone = (name: string) => body.skeleton.bones.find(b => b.name === name);
     const idleBones = [['spine03', 0.012], ['spine01', 0.008], ['neck01', 0.01], ['upperarm01_L', 0.015], ['upperarm01_R', 0.015]] as const;
@@ -102,37 +109,26 @@ export async function loadAvatarKit(kit: AvatarKit): Promise<LoadedKit> {
 
 /** Shows one garment per outfit piece: the item's own fitted model, else a tinted category stand-in. */
 export function dressKit(kit: LoadedKit, outfit: AvatarOutfit, palette: Record<string, string>, skin?: string) {
-  const worn = new Map<LoadedGarment, string | undefined>();
-  for (const piece of outfit.pieces) {
-    const own = kit.garments.find(g => g.asset.garmentId && g.asset.garmentId === piece.garmentId);
-    const standIns = kit.garments.filter(g => !g.asset.garmentId && g.asset.category === piece.category);
-    const standIn = standIns.find(g => g.asset.colors?.includes(piece.color)) ?? standIns[0];
-    const chosen = own ?? standIn;
-    if (chosen) worn.set(chosen, own ? undefined : palette[piece.color] ?? palette.Unknown);
-  }
-  for (const garment of kit.garments) if (garment.asset.category === 'hair') worn.set(garment, undefined);
-  const layers = [...worn.keys()].map(g => LAYER[g.asset.category] ?? -1);
+  const worn = wornItems(kit.garments.map(g => g.asset), outfit.pieces, palette);
+  const categories = [...worn.keys()].map(asset => asset.category);
   for (const garment of kit.garments) {
-    garment.mesh.visible = worn.has(garment);
-    const tint = worn.get(garment);
+    garment.mesh.visible = worn.has(garment.asset);
+    const tint = worn.get(garment.asset);
     if (tint && !garment.textured) garment.material.color.set(tint);
     // An inner layer tucks snug to the body while anything is worn over it (precomputed morph).
     if (garment.tuck !== undefined && garment.mesh.morphTargetInfluences)
-      garment.mesh.morphTargetInfluences[garment.tuck] = layers.some(layer => layer > (LAYER[garment.asset.category] ?? 1)) ? 1 : 0;
+      garment.mesh.morphTargetInfluences[garment.tuck] = tucked(garment.asset.category, categories) ? 1 : 0;
   }
-  if (skin) materialOf(kit.body).color.set(skin);
-  const signature = [...worn.keys()].map(g => g.asset.id).sort().join('|');
+  const skinMaterial = materialOf(kit.body);
+  if (skin && !skinMaterial.map) skinMaterial.color.set(skin);  // a personal body carries its own skin texture
+  const signature = [...worn.keys()].map(asset => asset.id).sort().join('|');
   if (signature === kit.wearing) return;
   kit.wearing = signature;
-  const source = kit.bodyIndex.array, kept: number[] = [];
-  const masks = [...worn.keys()].map(g => g.covers).filter((m): m is Uint8Array => !!m);
-  for (let t = 0; t < source.length / 3; t++) {
-    if (masks.some(mask => mask[t >> 3] & (0x80 >> (t & 7)))) continue;
-    kept.push(source[3 * t], source[3 * t + 1], source[3 * t + 2]);
-  }
+  const masks = kit.garments.filter(g => worn.has(g.asset) && g.covers).map(g => g.covers!);
+  const { kept, stale } = visibleTriangles(kit.bodyIndex.array, masks);
+  if (stale) console.warn(`${stale} garment(s) were fitted to an older body; refit them on the computer.`);
   kit.body.geometry.setIndex(kept);
 }
-
 /** Subtle breathing, sway and blinking. Returns false when nothing needs continuous redraw. */
 export function animateKit(kit: LoadedKit, seconds: number, reduced: boolean): boolean {
   const breath = reduced ? 0 : Math.sin(seconds * 1.7);

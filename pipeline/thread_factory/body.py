@@ -268,43 +268,59 @@ def build(profile: dict, out_dir: Path) -> dict:
         weights = accessories.blend(item, full_weights)
         joints = np.argsort(-weights, axis=1)[:, :8]
         texture = Path(mat['_folder']) / mat['diffuseTexture'] if mat.get('diffuseTexture') else None
+        if kind == 'eyes' and texture:
+            from .face import EYE_COLOURS
+            from .skin import recolour_iris
+            image = recolour_iris(texture, EYE_COLOURS.get(material or 'brown', EYE_COLOURS['brown']))
+        else:
+            image = (tintable_texture(texture) if tint else texture_bytes(texture)) if texture else None
         return Part(positions=to_world(accessories.fit(item, full_rest)), faces=f, uv=vt, face_uv=fu,
                     joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
                     morphs={k: accessories.blend(item, d) for k, d in full_morphs.items()} if with_morphs else None,
                     material=Material(name=f'{kind}_{name}', roughness=roughness, double_sided=kind != 'eyes',
-                                      texture=(tintable_texture(texture) if tint else texture_bytes(texture)) if texture else None,
+                                      texture=image,
                                       tint=tint, alpha=ALPHA.get(kind, 'MASK' if mat.get('transparent') == 'True' else 'OPAQUE')))
 
     style = profile.get('style', {})
     hair_colour = tuple(style.get('hair_rgb', (0.23, 0.16, 0.11)))  # sRGB; default dark brown
     eyes = proxy('eyes', 'high-poly', material=style.get('eyes', 'brown'), roughness=0.15)
     open_faces = open_eye_openings(up, faces, eyes.positions)
-    skin_texture, skin_rgb = None, tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44)))
-    if face_photo:  # the selfie becomes the face's skin; body tone and eye colour follow it
-        import io
-        from PIL import Image
-        from .face import bake_face_texture
-        atlas, skin_uv, skin_face_uv, skin_rgb, eye_colour = bake_face_texture(
-            up, faces[open_faces], model.texture_coordinates.numpy(), model.face_texture_coordinate_indices.numpy()[open_faces], *face_photo)
-        buffer = io.BytesIO(); Image.fromarray(atlas).save(buffer, 'JPEG', quality=90); skin_texture = buffer.getvalue()
-        Image.fromarray(atlas).save(out_dir / 'skin_atlas.jpg', quality=90)
+    skin_rgb = tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44)))
+    if face_photo:  # body tone and eye colour follow the selfie
+        from .face import face_colours
+        skin_rgb, eye_colour = face_colours(*face_photo)
         if 'eyes' not in style:
             eyes = proxy('eyes', 'high-poly', material=eye_colour, roughness=0.15)
+    # Skin: CC0 skin photography tone-matched to the person; the selfie, when given, becomes the face.
+    import io
+    from PIL import Image
+    from . import skin
+    atlas, skin_uv, skin_face_uv, skin_source = skin.bake(
+        up, faces[open_faces], model.texture_coordinates.numpy(), model.face_texture_coordinate_indices.numpy()[open_faces],
+        sex=profile.get('sex'), age=profile.get('age', 30), tone=skin_rgb)
+    if face_photo:
+        from .face import project_face
+        atlas = project_face(atlas, up, faces[open_faces], skin_uv, skin_face_uv, *face_photo)
+    hair = style.get('hair', 'short02' if profile.get('sex') == 'male' else 'bob02')
+    hair_part = None if hair == 'none' else proxy('hair', hair, with_morphs=False, roughness=0.65, tint=hair_colour)
+    if hair_part:
+        atlas = skin.paint_scalp(atlas, up, faces[open_faces], skin_uv, skin_face_uv, hair_part.positions, hair_part.faces,
+                                 hair_colour, brow_y=float(eyes.positions[:, 1].max()) + 0.015)
+    buffer = io.BytesIO(); Image.fromarray(atlas).save(buffer, 'JPEG', quality=88); skin_texture = buffer.getvalue()
+    Image.fromarray(atlas).save(out_dir / 'skin_atlas.jpg', quality=88)
     # Skeleton, skin weights and the exact skin triangle list the phone renders: garments bind to this
     # rig and index their body-coverage masks into these triangles.
     np.savez_compressed(out_dir / 'skeleton.npz', bone_names=np.array(labels), bone_parents=np.array(model.bone_parents),
                         bone_world=bone_world, vertex_joints=model.vertex_bone_indices.numpy(),
                         vertex_weights=model.vertex_bone_weights.numpy(), positions=up, faces=faces[open_faces])
-    body_part = Part(positions=up, faces=faces[open_faces],
-                     uv=skin_uv if face_photo else model.texture_coordinates.numpy(),
-                     face_uv=skin_face_uv if face_photo else model.face_texture_coordinate_indices.numpy()[open_faces],
+    body_part = Part(positions=up, faces=faces[open_faces], uv=skin_uv, face_uv=skin_face_uv,
                      joint_indices=model.vertex_bone_indices.numpy(), joint_weights=model.vertex_bone_weights.numpy(),
                      morphs=morphs, material=Material(name='skin', rgb=skin_rgb, roughness=0.55, texture=skin_texture, mime='image/jpeg'))
     write_skinned_glb(out_dir / 'body.glb', parts=[
         body_part,
         eyes,
         *([] if face_photo and 'eyebrows' not in style else [proxy('eyebrows', style.get('eyebrows', 'eyebrow001'), tint=hair_colour)]),
-        proxy('eyelashes', style.get('eyelashes', 'eyelashes01')),
+        proxy('eyelashes', style.get('eyelashes', 'eyelashes01'), tint=(0.07, 0.05, 0.04)),
     ], **rig)
     # Shoe stand-ins (CC0, textured). Their delete_verts mark the foot skin hidden inside the shoe.
     skin_faces = faces[open_faces]
@@ -316,11 +332,12 @@ def build(profile: dict, out_dir: Path) -> dict:
         write_skinned_glb(out_dir / f'shoes_{name}.glb', parts=[proxy('clothes', name, with_morphs=False, roughness=0.5)],
                           name=f'shoes_{name}', extras={'thread': {'category': 'shoes', 'colors': colours,
                           'bodyTriangles': int(len(skin_faces)), 'coversBodyTriangles': bits}}, **rig)
-    hair = style.get('hair', 'short02' if profile.get('sex') == 'male' else 'bob02')
-    if hair != 'none':
-        write_skinned_glb(out_dir / 'hair.glb', parts=[proxy('hair', hair, with_morphs=False, roughness=0.65, tint=hair_colour)],
+    if hair_part:
+        write_skinned_glb(out_dir / 'hair.glb', parts=[hair_part],
                           name='hair', extras={'thread': {'category': 'hair', 'style': hair}}, **rig)
-    report = {'profile': profile, 'phenotypes': phenotypes, 'local_changes': local_changes,
+    from . import base_layer  # neutral underwear for empty outfit slots
+    base_layer.build(out_dir, profile.get('sex', 'female'))
+    report = {'profile': profile, 'phenotypes': phenotypes, 'local_changes': local_changes, 'skin_source': skin_source,
               'achieved': {'height_cm': measurements['height'], 'chest_cm': measurements['bust'],
                            'waist_cm': measurements['waist'], 'hips_cm': measurements['hips']},
               'garmentcode_measurements': measurements}
