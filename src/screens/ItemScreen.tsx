@@ -11,6 +11,9 @@ import { useWardrobe } from '../store';
 import { choosePhoto, photoDataUri, removeManagedPhoto } from '../media';
 import { analyzePhoto } from '../ai';
 import { eraseGarmentReconstructionAssets } from '../reconstruction';
+import { presetForCategory, specFromShape } from '../domain/studio';
+import { sendGarmentForFitting } from '../studio';
+import { colorHex } from '../ui/theme';
 import { Button, Chip, Field, Label, Notice, Screen, Section, ui } from '../ui/primitives';
 import { GarmentArt } from '../ui/GarmentArt';
 import { useTheme } from '../ui/theme';
@@ -40,6 +43,7 @@ export function ItemScreen({ route, navigation }: NativeStackScreenProps<RootSta
     <View style={ui.row}><Button title="Camera" secondary icon="camera" disabled={busy} style={{ flex: 1 }} onPress={() => void photo(true)} /><Button title="Photos" secondary icon="photo" disabled={busy} style={{ flex: 1 }} onPress={() => void photo(false)} /></View>
     {features.connectedAi && !!item.imageUri && <Button title="Identify this piece with AI" icon="studio" secondary loading={busy} onPress={() => Alert.alert('Analyze this photo?', 'This sends the selected clothing photo to your configured AI service and its model provider. No other wardrobe photos are shared. You can review every suggested detail before saving.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Analyze photo', onPress: () => void analyze() }])} />}
     {!!error && <Notice error>{error}</Notice>}{analyzed && <Notice>Details suggested by AI. Check the category, color and fit before saving.</Notice>}
+    {existing&&presetForCategory[existing.category]&&<Button title="Fit on my body" secondary icon="person" disabled={busy} onPress={()=>void sendGarmentForFitting({garmentId:existing.id,category:existing.category,colorHex:colorHex[existing.color],spec:existing.shape?specFromShape(existing.shape):undefined}).then(()=>Alert.alert('Fitting on your computer','This piece is being sewn and draped on your body. It appears in your dressing room when it is ready.')).catch(e=>Alert.alert('Couldn’t start fitting',e instanceof Error?e.message:'Check your computer connection.'))}/>}
     {existing&&<Button title="Capture or review this piece in 3D" secondary icon="camera" disabled={busy} onPress={()=>navigation.navigate('Capture',{kind:'garment',garmentId:existing.id})}/>}
     <Field label="Piece name" value={item.name} onChangeText={v => update('name', v)} placeholder="e.g. White weekend tee" maxLength={100} />
     <Section title="Category"><View style={ui.wrap}>{categories.map(c => <Chip key={c} title={categoryLabels[c]} selected={item.category === c} onPress={() => update('category', c)} />)}</View></Section>

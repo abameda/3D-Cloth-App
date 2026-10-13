@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Context: undefined; SaveLook: undefined; Connection: undefined; Backup:undefined; Privacy:undefined; Batch:undefined; Account:undefined; TryOn:undefined; Avatar:undefined;
   Looks: {view?:'saved'|'history'} | undefined;
   Computer: undefined;
+  Body: undefined;
   LiveFace: undefined;
   Capture: {kind:'face'|'body'|'garment';garmentId?:string};
 };

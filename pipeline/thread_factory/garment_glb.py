@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from .gltf import write_skinned_glb
+from .gltf import Material, Part, texture_bytes, write_skinned_glb
 
 
 def read_obj(path: Path):
@@ -68,6 +68,20 @@ def covered_triangles(body: trimesh.Trimesh, garment: trimesh.Trimesh, reach: fl
     return covered[body.faces].all(axis=1)
 
 
+def tuck_morph(garment: np.ndarray, body: trimesh.Trimesh, category: str, gap: float = 0.0015) -> np.ndarray:
+    """Displacements that pull an inner layer snug to the body (gap metres off the skin) where an outer
+    layer overlaps it: a bottom's upper part under a top, a whole top under outerwear. The phone enables
+    this morph only while an outer layer is worn, so no outfit combination needs re-simulation."""
+    closest, distance, triangle = trimesh.proximity.closest_point(body, garment)
+    target = closest + body.face_normals[triangle] * gap
+    amount = np.clip((distance - gap) / 0.002, 0, 1)  # cloth already at the gap stays put
+    if category in ('bottom', 'onepiece'):
+        floor = body.bounds[0, 1]
+        hip = floor + 0.50 * (body.bounds[1, 1] - floor)  # tops end around the hip; fade in over 8 cm below
+        amount = amount * np.clip((garment[:, 1] - (hip - 0.08)) / 0.08, 0, 1)
+    return (target - garment) * amount[:, None]
+
+
 def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.85, 0.85, 0.85),
           texture: Path | None = None, scale: float = 0.01) -> dict:
     rig = np.load(body_dir / 'skeleton.npz')
@@ -80,16 +94,15 @@ def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.
     joints = np.argsort(-weights, axis=1)[:, :8]
     covers = covered_triangles(body, cloth)
     bits = base64.b64encode(np.packbits(covers.astype(np.uint8))).decode()
+    part = Part(positions=positions, faces=faces, uv=uvs, face_uv=face_uv,
+                joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
+                morphs={'tuck': tuck_morph(positions, body, category)} if category in ('bottom', 'onepiece', 'top') else None,
+                material=Material(name=f'fabric_{category}', rgb=colour, roughness=0.85, double_sided=True,
+                                  texture=texture_bytes(texture) if texture else None))
     write_skinned_glb(
-        out, positions=positions, faces=faces, uv=uvs, face_uv=face_uv,
-        joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
-        bone_names=bone_names, bone_parents=[int(p) for p in rig['bone_parents']], bone_world=rig['bone_world'],
-        skin_rgb=colour, name=f'garment_{category}', material_name=f'fabric_{category}',
-        texture=texture.read_bytes() if texture else None,
-        texture_mime='image/jpeg' if texture and texture.suffix.lower() in ('.jpg', '.jpeg') else 'image/png',
-        double_sided=True, roughness=0.85,
-        extras={'thread': {'category': category, 'bodyTriangles': int(len(body.faces)),
-                           'coversBodyTriangles': bits}},
+        out, parts=[part], bone_names=bone_names, bone_parents=[int(p) for p in rig['bone_parents']],
+        bone_world=rig['bone_world'], name=f'garment_{category}',
+        extras={'thread': {'category': category, 'bodyTriangles': int(len(body.faces)), 'coversBodyTriangles': bits}},
     )
     return {'triangles': int(len(faces)), 'covered_body_triangles': int(covers.sum()), 'bytes': out.stat().st_size}
 
@@ -101,8 +114,10 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--category', default='top')
     parser.add_argument('--texture', type=Path, default=None)
+    parser.add_argument('--colour', default=None, help='sRGB hex, e.g. #2f3e5a, used when there is no texture')
     args = parser.parse_args()
-    print(json.dumps(build(args.sim, args.body, args.out, category=args.category, texture=args.texture), indent=2))
+    colour = tuple(int(args.colour[i:i + 2], 16) / 255 for i in (1, 3, 5)) if args.colour else (0.85, 0.85, 0.85)
+    print(json.dumps(build(args.sim, args.body, args.out, category=args.category, texture=args.texture, colour=colour), indent=2))
 
 
 if __name__ == '__main__':

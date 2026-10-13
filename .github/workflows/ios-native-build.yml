@@ -1,0 +1,46 @@
+# Compiles the native iOS app (including the local ARKit Swift module) on GitHub's macOS runners.
+# No signing, no secrets, no device: this proves the Xcode project builds before anyone opens a Mac.
+name: iOS native build
+
+on:
+  push:
+    branches: [main]
+    paths: ['modules/**', 'plugins/**', 'app.json', 'package.json', 'package-lock.json', '.github/workflows/ios-native-build.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-build:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Generate the iOS project
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install pods
+        run: cd ios && pod install
+      - name: Build for the iOS Simulator (unsigned)
+        run: |
+          set -o pipefail
+          workspace=$(ls -d ios/*.xcworkspace | head -n 1)
+          scheme=$(basename "$workspace" .xcworkspace)
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tee xcodebuild.log | grep -E "error:|warning: .*ThreadFaceScanner|BUILD (SUCCEEDED|FAILED)"
+      - name: Keep the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 7

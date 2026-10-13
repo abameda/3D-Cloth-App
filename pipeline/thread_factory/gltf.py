@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import struct
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -90,40 +91,78 @@ def portable_name(bone: str) -> str:
     return bone.replace('.', '_')
 
 
-def write_skinned_glb(path: Path, *, positions, faces, uv, face_uv, joint_indices, joint_weights,
-                      bone_names, bone_parents, bone_world, morphs: dict | None = None,
-                      skin_rgb=(0.78, 0.57, 0.44), name='ThreadAvatar', material_name='skin',
-                      texture: bytes | None = None, texture_mime='image/png', double_sided=False,
-                      roughness=0.55, extras: dict | None = None) -> None:
-    """bone_world: (B, 4, 4) rigid bind-pose transforms in the same space as positions."""
-    src, uv_src, tri = _split_by_uv(np.asarray(faces), np.asarray(face_uv))
-    normals = _normals(np.asarray(positions, np.float64), np.asarray(faces))[src]
-    pos = np.asarray(positions)[src]
-    tex = np.asarray(uv)[uv_src].astype(np.float64)
-    tex[:, 1] = 1.0 - tex[:, 1]  # MakeHuman UVs are bottom-left origin; glTF is top-left
-    joints, weights = _top4(np.asarray(joint_indices)[src], np.asarray(joint_weights)[src])
+@dataclass
+class Material:
+    name: str
+    rgb: tuple = (0.8, 0.8, 0.8)          # sRGB, used when there is no texture
+    roughness: float = 0.6
+    double_sided: bool = False
+    texture: bytes | None = None
+    mime: str = 'image/png'
+    alpha: str = 'OPAQUE'                 # OPAQUE | MASK (cut-out hair, lashes) | BLEND
 
+
+@dataclass
+class Part:
+    """One skinned primitive. UVs are per face corner (face_uv indexes uv)."""
+    positions: np.ndarray
+    faces: np.ndarray
+    uv: np.ndarray
+    face_uv: np.ndarray
+    joint_indices: np.ndarray
+    joint_weights: np.ndarray
+    material: Material
+    morphs: dict | None = None
+
+
+def _material(b: _Builder, material: Material, images: list, textures: list) -> dict:
+    pbr = {'baseColorFactor': [*_linear(material.rgb), 1.0], 'metallicFactor': 0.0, 'roughnessFactor': material.roughness}
+    if material.texture is not None:
+        images.append({'bufferView': b.view(material.texture), 'mimeType': material.mime})
+        textures.append({'source': len(images) - 1})
+        pbr['baseColorTexture'] = {'index': len(textures) - 1}
+        pbr['baseColorFactor'] = [1.0, 1.0, 1.0, 1.0]
+    result = {'name': material.name, 'doubleSided': material.double_sided, 'pbrMetallicRoughness': pbr}
+    if material.alpha != 'OPAQUE':
+        result['alphaMode'] = material.alpha
+        if material.alpha == 'MASK':
+            result['alphaCutoff'] = 0.5
+    return result
+
+
+def write_skinned_glb(path: Path, *, parts: list[Part], bone_names, bone_parents, bone_world,
+                      name='ThreadAvatar', extras: dict | None = None) -> None:
+    """All parts share one skeleton. bone_world: (B, 4, 4) bind-pose transforms in the parts' space."""
     b = _Builder()
-    attributes = {
-        'POSITION': b.accessor(pos, 'VEC3', FLOAT, ARRAY_BUFFER, minmax=True),
-        'NORMAL': b.accessor(normals, 'VEC3', FLOAT, ARRAY_BUFFER),
-        'TEXCOORD_0': b.accessor(tex, 'VEC2', FLOAT, ARRAY_BUFFER),
-        'JOINTS_0': b.accessor(joints, 'VEC4', USHORT, ARRAY_BUFFER),
-        'WEIGHTS_0': b.accessor(weights, 'VEC4', FLOAT, ARRAY_BUFFER),
-    }
-    primitive = {'attributes': attributes, 'indices': b.accessor(tri.reshape(-1), 'SCALAR', UINT, ELEMENT_ARRAY_BUFFER),
-                 'material': 0}
-    mesh = {'name': name, 'primitives': [primitive]}
-    if morphs:
-        targets, names = [], []
-        for morph_name, delta in morphs.items():
-            d = np.asarray(delta)[src]
-            moving = np.nonzero(np.linalg.norm(d, axis=1) > 1e-6)[0]
-            targets.append({'POSITION': b.sparse_vec3(len(pos), moving, d[moving])})
-            names.append(morph_name)
-        primitive['targets'] = targets
-        mesh['weights'] = [0.0] * len(targets)
-        mesh['extras'] = {'targetNames': names}
+    images, textures, materials, primitives = [], [], [], []
+    morph_names = next((list(p.morphs) for p in parts if p.morphs), [])
+    for part in parts:
+        src, uv_src, tri = _split_by_uv(np.asarray(part.faces), np.asarray(part.face_uv))
+        normals = _normals(np.asarray(part.positions, np.float64), np.asarray(part.faces))[src]
+        pos = np.asarray(part.positions)[src]
+        tex = np.asarray(part.uv)[uv_src].astype(np.float64)
+        tex[:, 1] = 1.0 - tex[:, 1]  # OBJ/MakeHuman UVs are bottom-left origin; glTF is top-left
+        joints, weights = _top4(np.asarray(part.joint_indices)[src], np.asarray(part.joint_weights)[src])
+        primitive = {'attributes': {
+            'POSITION': b.accessor(pos, 'VEC3', FLOAT, ARRAY_BUFFER, minmax=True),
+            'NORMAL': b.accessor(normals, 'VEC3', FLOAT, ARRAY_BUFFER),
+            'TEXCOORD_0': b.accessor(tex, 'VEC2', FLOAT, ARRAY_BUFFER),
+            'JOINTS_0': b.accessor(joints, 'VEC4', USHORT, ARRAY_BUFFER),
+            'WEIGHTS_0': b.accessor(weights, 'VEC4', FLOAT, ARRAY_BUFFER),
+        }, 'indices': b.accessor(tri.reshape(-1), 'SCALAR', UINT, ELEMENT_ARRAY_BUFFER), 'material': len(materials)}
+        materials.append(_material(b, part.material, images, textures))
+        if morph_names:  # glTF requires every primitive of a mesh to carry the same targets
+            targets = []
+            for morph in morph_names:
+                d = np.asarray(part.morphs[morph])[src] if part.morphs and morph in part.morphs else np.zeros((len(pos), 3))
+                moving = np.nonzero(np.linalg.norm(d, axis=1) > 1e-6)[0]
+                targets.append({'POSITION': b.sparse_vec3(len(pos), moving, d[moving])})
+            primitive['targets'] = targets
+        primitives.append(primitive)
+    mesh = {'name': name, 'primitives': primitives}
+    if morph_names:
+        mesh['weights'] = [0.0] * len(morph_names)
+        mesh['extras'] = {'targetNames': morph_names}
 
     world = np.asarray(bone_world, np.float64)
     nodes, roots = [], []
@@ -140,29 +179,29 @@ def write_skinned_glb(path: Path, *, positions, faces, uv, face_uv, joint_indice
             'skeleton': roots[0]}
     mesh_node = len(nodes)
     nodes.append({'name': name, 'mesh': 0, 'skin': 0, **({'extras': extras} if extras else {})})
-    material = {'name': material_name, 'doubleSided': double_sided, 'pbrMetallicRoughness': {
-        'baseColorFactor': [*_linear(skin_rgb), 1.0], 'metallicFactor': 0.0, 'roughnessFactor': roughness}}
-    images = textures = None
-    if texture is not None:
-        images = [{'bufferView': b.view(texture), 'mimeType': texture_mime}]
-        textures = [{'source': 0}]
-        material['pbrMetallicRoughness']['baseColorTexture'] = {'index': 0}
-        material['pbrMetallicRoughness']['baseColorFactor'] = [1.0, 1.0, 1.0, 1.0]
     gltf = {
         'asset': {'version': '2.0', 'generator': 'Thread asset factory'},
         'scene': 0, 'scenes': [{'nodes': roots + [mesh_node]}], 'nodes': nodes,
-        'meshes': [mesh], 'skins': [skin],
-        'materials': [material],
-        'accessors': b.accessors, 'bufferViews': b.views, 'buffers': [{'byteLength': len(b.blob)}],
+        'meshes': [mesh], 'skins': [skin], 'materials': materials,
+        'accessors': b.accessors, 'bufferViews': b.views, 'buffers': [{'byteLength': 0}],
     }
     if images:
         gltf['images'], gltf['textures'] = images, textures
     while len(b.blob) % 4:
         b.blob.append(0)
-    header = json.dumps(gltf, separators=(',', ':')).encode()
-    header += b' ' * (-len(header) % 4)
     gltf['buffers'][0]['byteLength'] = len(b.blob)
     header = json.dumps(gltf, separators=(',', ':')).encode()
     header += b' ' * (-len(header) % 4)
-    body = struct.pack('<I4s', len(header), b'JSON') + header + struct.pack('<I4s', len(b.blob), b'BIN\x00') + bytes(b.blob)
+    body = struct.pack("<I4s", len(header), b"JSON") + header + struct.pack("<I4s", len(b.blob), b"BIN" + bytes(1)) + bytes(b.blob)
     Path(path).write_bytes(struct.pack('<4sII', b'glTF', 2, 12 + len(body)) + body)
+
+
+def texture_bytes(path: Path, max_size: int = 1024) -> bytes:
+    """PNG bytes, downscaled for phone memory (alpha kept for cut-out hair and lashes)."""
+    import io
+    from PIL import Image
+    with Image.open(path) as image:
+        image.thumbnail((max_size, max_size))
+        buffer = io.BytesIO()
+        image.save(buffer, 'PNG', optimize=True)
+        return buffer.getvalue()

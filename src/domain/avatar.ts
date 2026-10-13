@@ -2,7 +2,7 @@ import { categories, type Category, type Color, type Dataset, type Garment, type
 
 export const avatarCategories = categories;
 export type AvatarCategory = typeof avatarCategories[number];
-export interface AvatarPiece { category: AvatarCategory; color: Color; name: string; fit?: Garment['fit'] }
+export interface AvatarPiece { category: AvatarCategory; color: Color; name: string; fit?: Garment['fit']; garmentId?: string }
 export interface AvatarOutfit { sample: boolean; pieces: AvatarPiece[]; notices: string[] }
 
 /** Rendering never repairs or changes the user's outfit. Unsupported items remain explicit. */
@@ -27,7 +27,7 @@ export function resolveAvatarOutfit(outfit: Outfit, garments: readonly Garment[]
       notices.push(`${garment.name}: no 3D sample shape yet. View it on your outfit board.`);
       continue;
     }
-    pieces.push({ category:category as AvatarCategory, color:garment.color, name:garment.name, fit:garment.fit });
+    pieces.push({ category:category as AvatarCategory, color:garment.color, name:garment.name, fit:garment.fit, garmentId:garment.id });
   }
   return { sample:false, pieces, notices };
 }

@@ -18,9 +18,12 @@ import numpy as np
 import torch
 import trimesh
 import yaml
+
+import anny
 from scipy.spatial import ConvexHull
 
-from .gltf import write_skinned_glb
+from . import accessories
+from .gltf import Material, Part, texture_bytes, write_skinned_glb
 from .measure import hull_perimeter, measure, torso_levels
 
 ANNY_ROOT = Path(__file__).resolve().parents[1] / 'third_party' / 'anny' / 'src' / 'anny'
@@ -28,6 +31,9 @@ ANNY_ROOT = Path(__file__).resolve().parents[1] / 'third_party' / 'anny' / 'src'
 TO_YUP = np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]], dtype=np.float64)
 ARM_BONES = ('upperarm', 'lowerarm', 'wrist', 'hand', 'finger', 'thumb', 'index', 'middle', 'ring', 'pinky', 'metacarpal')
 LEG_BONES = ('upperleg', 'lowerleg', 'foot', 'toe')
+# Eyes: the cornea shell is fully transparent (cut-out). Brows/lashes are soft strokes (blended, small, few sort issues).
+# Hair is cut-out: blended hair cannot be depth-sorted reliably on phones.
+ALPHA = {'eyes': 'MASK', 'eyebrows': 'BLEND', 'eyelashes': 'BLEND', 'hair': 'MASK'}
 
 
 def age_parameter(years: float) -> float:
@@ -152,6 +158,21 @@ def landmarks(model, out, to_world, mesh: trimesh.Trimesh) -> dict:
                 neck_base=neck_side, nape=neck_side, neck_half_width=neck_half, wrist_l=wrist)
 
 
+def open_eye_openings(positions: np.ndarray, faces: np.ndarray, eye_positions: np.ndarray) -> np.ndarray:
+    """Mask of skin faces to keep. Anny's simplified topology closes the eye openings with a membrane;
+    faces hit by rays cast forward (+z) from the front of each eyeball are removed so the eyes show."""
+    skin = trimesh.Trimesh(positions, faces, process=False)
+    front = eye_positions[eye_positions[:, 2] > np.percentile(eye_positions[:, 2], 70)]
+    origins = front - np.array([0, 0, 0.002])
+    hits = skin.ray.intersects_first(origins, np.tile([0.0, 0.0, 1.0], (len(origins), 1)))
+    keep = np.ones(len(faces), bool)
+    found = hits >= 0
+    if found.any():
+        depth = skin.triangles_center[hits[found], 2] - origins[found, 2]
+        keep[hits[found][depth < 0.008]] = False  # only skin within 8 mm in front of the eyeball
+    return keep
+
+
 def build(profile: dict, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     model = load_model()
@@ -196,28 +217,65 @@ def build(profile: dict, out_dir: Path) -> dict:
     (out_dir / 'sim_body_segmentation.json').write_text(json.dumps(part))
 
     # --- Phone avatar ---
+    # The full MakeHuman topology (same shape parameters) anchors CC0 proxies: eyes, brows, lashes, hair.
+    full = anny.Anny(topology='anny-full', local_changes='default', facial_actions='all').to(dtype=torch.float32)
     with torch.no_grad():
-        morphs = {}
+        morphs, full_morphs = {}, {}
+        full_rest = full(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes)['rest_vertices'][0].numpy().astype(np.float64)
         for action in model.facial_action_labels:
             shaped = model(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes,
                            facial_actions={action: 1.0})['rest_vertices'][0].numpy()
             morphs[action] = (shaped - out['rest_vertices'][0].numpy()) @ TO_YUP.T
+            shaped_full = full(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes,
+                               facial_actions={action: 1.0})['rest_vertices'][0].numpy()
+            full_morphs[action] = (shaped_full - full_rest) @ TO_YUP.T
         bone_world = out['rest_bone_poses'][0].numpy().astype(np.float64)
     rot = np.eye(4); rot[:3, :3] = TO_YUP
     shift = np.eye(4); shift[:3, 3] = offset
     bone_world = np.einsum('ij,njk->nik', shift @ rot, bone_world)
-    uv = model.texture_coordinates.numpy()
-    # Skeleton + skin weights for binding garments to the same rig without reloading Anny.
+    full_weights = np.zeros((len(full_rest), len(labels)))
+    np.add.at(full_weights, (np.repeat(np.arange(len(full_rest)), full.vertex_bone_indices.shape[1]),
+                             full.vertex_bone_indices.numpy().reshape(-1)), full.vertex_bone_weights.numpy().reshape(-1))
+    rig = dict(bone_names=list(labels), bone_parents=list(model.bone_parents), bone_world=bone_world)
+
+    def proxy(kind: str, name: str, material: str | None = None, with_morphs=True, roughness=0.5) -> Part:
+        item, mat = accessories.load(kind, name)
+        if material:
+            mat = accessories.read_mhmat(accessories.ASSETS / kind / 'materials' / f'{material}.mhmat')
+            mat['_folder'] = str(accessories.ASSETS / kind / 'materials')
+        v, vt, f, fu = accessories.read_obj(item.folder / item.obj_file)
+        weights = accessories.blend(item, full_weights)
+        joints = np.argsort(-weights, axis=1)[:, :8]
+        texture = Path(mat['_folder']) / mat['diffuseTexture'] if mat.get('diffuseTexture') else None
+        return Part(positions=to_world(accessories.fit(item, full_rest)), faces=f, uv=vt, face_uv=fu,
+                    joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
+                    morphs={k: accessories.blend(item, d) for k, d in full_morphs.items()} if with_morphs else None,
+                    material=Material(name=f'{kind}_{name}', roughness=roughness, double_sided=kind != 'eyes',
+                                      texture=texture_bytes(texture) if texture else None,
+                                      alpha=ALPHA.get(kind, 'MASK' if mat.get('transparent') == 'True' else 'OPAQUE')))
+
+    style = profile.get('style', {})
+    eyes = proxy('eyes', 'high-poly', material=style.get('eyes', 'brown'), roughness=0.15)
+    open_faces = open_eye_openings(up, faces, eyes.positions)
+    # Skeleton, skin weights and the exact skin triangle list the phone renders: garments bind to this
+    # rig and index their body-coverage masks into these triangles.
     np.savez_compressed(out_dir / 'skeleton.npz', bone_names=np.array(labels), bone_parents=np.array(model.bone_parents),
                         bone_world=bone_world, vertex_joints=model.vertex_bone_indices.numpy(),
-                        vertex_weights=model.vertex_bone_weights.numpy(), positions=up, faces=faces)
-    write_skinned_glb(
-        out_dir / 'body.glb', positions=up, faces=faces, uv=uv,
-        face_uv=model.face_texture_coordinate_indices.numpy(),
-        joint_indices=model.vertex_bone_indices.numpy(), joint_weights=model.vertex_bone_weights.numpy(),
-        bone_names=list(labels), bone_parents=list(model.bone_parents), bone_world=bone_world,
-        morphs=morphs, skin_rgb=profile.get('skin_rgb', (0.78, 0.57, 0.44)),
-    )
+                        vertex_weights=model.vertex_bone_weights.numpy(), positions=up, faces=faces[open_faces])
+    body_part = Part(positions=up, faces=faces[open_faces], uv=model.texture_coordinates.numpy(),
+                     face_uv=model.face_texture_coordinate_indices.numpy()[open_faces],
+                     joint_indices=model.vertex_bone_indices.numpy(), joint_weights=model.vertex_bone_weights.numpy(),
+                     morphs=morphs, material=Material(name='skin', rgb=tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44))), roughness=0.55))
+    write_skinned_glb(out_dir / 'body.glb', parts=[
+        body_part,
+        eyes,
+        proxy('eyebrows', style.get('eyebrows', 'eyebrow001')),
+        proxy('eyelashes', style.get('eyelashes', 'eyelashes01')),
+    ], **rig)
+    hair = style.get('hair', 'short02' if profile.get('sex') == 'male' else 'bob02')
+    if hair != 'none':
+        write_skinned_glb(out_dir / 'hair.glb', parts=[proxy('hair', hair, with_morphs=False, roughness=0.65)],
+                          name='hair', extras={'thread': {'category': 'hair', 'style': hair}}, **rig)
     report = {'profile': profile, 'phenotypes': phenotypes, 'local_changes': local_changes,
               'achieved': {'height_cm': measurements['height'], 'chest_cm': measurements['bust'],
                            'waist_cm': measurements['waist'], 'hips_cm': measurements['hips']},

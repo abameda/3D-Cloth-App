@@ -6,7 +6,8 @@ import { File } from 'expo-file-system';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { AvatarOutfit } from '../domain/avatar';
-import { disposeAvatar, dressAvatar, attachFaceScan } from './avatarScene';
+import { disposeAvatar, dressAvatar, attachFaceScan, skinTones } from './avatarScene';
+import { animateKit, dressKit, loadAvatarKit, type AvatarKit, type LoadedKit } from './avatarKit';
 import type { AvatarAppearance } from '../domain/appearance';
 import { loadFaceScan } from './loadFaceScan';
 import { Button, Label, Notice } from './primitives';
@@ -14,8 +15,8 @@ import { colorHex, useTheme } from './theme';
 import { createDressingRoom, roomView, type RoomView } from './roomScene';
 import type { Category } from '../domain/types';
 
-interface Props { outfit: AvatarOutfit; angle: number; zoom: number; appearance: AvatarAppearance; scanUri?: string; assetUri?: string; height?:number; portrait?:boolean; greeting?:number; room?:RoomView; showCharacter?:boolean; onCategorySelect?:(category:Category)=>void; onRotate: (angle:number) => void }
-interface Session { renderer: THREE.WebGLRenderer; scene: THREE.Scene; model: THREE.Group; camera: THREE.PerspectiveCamera; gl: ExpoWebGLRenderingContext; cleanup?: () => void; transitionStart:number; dark:boolean; mixer?:THREE.AnimationMixer; idle?:THREE.AnimationAction; wave?:THREE.AnimationAction; greeting:number; lastFrame:number }
+interface Props { kit?: AvatarKit; outfit: AvatarOutfit; angle: number; zoom: number; appearance: AvatarAppearance; scanUri?: string; assetUri?: string; height?:number; portrait?:boolean; greeting?:number; room?:RoomView; showCharacter?:boolean; onCategorySelect?:(category:Category)=>void; onRotate: (angle:number) => void }
+interface Session { renderer: THREE.WebGLRenderer; scene: THREE.Scene; model: THREE.Group; camera: THREE.PerspectiveCamera; gl: ExpoWebGLRenderingContext; cleanup?: () => void; transitionStart:number; dark:boolean; mixer?:THREE.AnimationMixer; idle?:THREE.AnimationAction; wave?:THREE.AnimationAction; greeting:number; lastFrame:number; kit?:LoadedKit; started:number }
 
 /** Native GL only. Active character clips animate; room/surface views render on changes. */
 export function AvatarView(props: Props) {
@@ -55,9 +56,11 @@ export function AvatarView(props: Props) {
       frame.current=null;const current=session.current;if(!current)return;
       try {
         const p=latest.current;
-        if(!p.assetUri)dressAvatar(current.model,p.outfit,p.appearance.skin,colorHex,p.appearance,!!p.scanUri);
         const now=Date.now(),delta=Math.min(.05,(now-current.lastFrame)/1000);current.lastFrame=now;
-        const animated=!!current.mixer&&!reduced.current&&p.showCharacter!==false;
+        let kitMoving=false;
+        if(current.kit){dressKit(current.kit,p.outfit,colorHex,skinTones[p.appearance.skin]);kitMoving=animateKit(current.kit,(now-current.started)/1000,reduced.current);}
+        else if(!p.assetUri)dressAvatar(current.model,p.outfit,p.appearance.skin,colorHex,p.appearance,!!p.scanUri);
+        const animated=(!!current.mixer&&!reduced.current||kitMoving)&&p.showCharacter!==false;
         if(current.mixer){
           if(reduced.current){current.mixer.setTime(0);}else{
             if(p.greeting!==undefined&&p.greeting!==current.greeting&&current.wave){current.greeting=p.greeting;current.wave.reset().setLoop(THREE.LoopOnce,1).play();current.wave.clampWhenFinished=true;current.wave.crossFadeFrom(current.idle!,.18,false);}
@@ -105,7 +108,10 @@ export function AvatarView(props: Props) {
     let transferred=false;
     try {
       let loaded:{scene:THREE.Group;animations?:THREE.AnimationClip[]};
-      if(latest.current.assetUri){
+      let kit:LoadedKit|undefined;
+      if(latest.current.kit&&!latest.current.assetUri){
+        kit=await loadAvatarKit(latest.current.kit);cleanup=kit.cleanup;loaded={scene:kit.root};
+      }else if(latest.current.assetUri){
         const artifact=await loadFaceScan(latest.current.assetUri);cleanup=artifact.cleanup;loaded=artifact;
         const bounds=new THREE.Box3().setFromObject(loaded.scene),size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
         const scale=1.6/Math.max(size.x,size.y,size.z);loaded.scene.position.sub(center);loaded.scene.scale.setScalar(scale);loaded.scene.position.multiplyScalar(scale);loaded.scene.position.y+=.96;
@@ -116,7 +122,7 @@ export function AvatarView(props: Props) {
         const bytes=await new File(asset.localUri).arrayBuffer();loaded=await new GLTFLoader().parseAsync(bytes,'');
       }
       scene=new THREE.Scene();scene.add(loaded.scene);
-      if(latest.current.scanUri&&!latest.current.assetUri) {
+      if(latest.current.scanUri&&!latest.current.assetUri&&!kit) {
         const face=await loadFaceScan(latest.current.scanUri);cleanup=face.cleanup;
         try { attachFaceScan(loaded.scene,face.scene); } catch(e) { disposeAvatar(face.scene);throw e; }
       }
@@ -138,7 +144,7 @@ export function AvatarView(props: Props) {
       const idleClip=loaded.animations?.find(clip=>clip.name==='Idle'),waveClip=loaded.animations?.find(clip=>clip.name==='Wave');
       const idle=idleClip&&mixer?mixer.clipAction(idleClip).play():undefined,wave=waveClip&&mixer?mixer.clipAction(waveClip):undefined;
       if(mixer&&idle&&wave)mixer.addEventListener('finished',()=>{wave.fadeOut(.2);idle.reset().fadeIn(.2).play();});
-      session.current={renderer,scene,model:loaded.scene,camera,gl,cleanup,transitionStart:Date.now(),dark:latest.current.dark,mixer,idle,wave,greeting:latest.current.greeting??0,lastFrame:Date.now()};transferred=true;
+      session.current={renderer,scene,model:loaded.scene,camera,gl,cleanup,transitionStart:Date.now(),dark:latest.current.dark,mixer,idle,wave,greeting:latest.current.greeting??0,lastFrame:Date.now(),kit,started:Date.now()};transferred=true;
       setStatus('ready');draw();
     }catch(e){
       if(token===generation.current)fail(latest.current.scanUri&&e instanceof Error ? `Couldn’t open this face scan. ${e.message}` : 'Couldn’t open the 3D character. Try again; your saved clothes are safe.');

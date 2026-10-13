@@ -69,7 +69,19 @@ if (body && covers.length) {
   body.geometry.setIndex(kept);
   stats.push(`body: hid ${triangles - kept.length / 3} covered triangles`);
 }
-const face = skinned.find(m => m.morphTargetDictionary);
+// Layering: an inner garment tucks under any worn outer layer (same rule as the phone).
+const LAYER = { bottom: 0, onepiece: 0, top: 1, outerwear: 2 };
+const worn = skinned.map(m => m.userData.thread?.category).filter(Boolean);
+for (const mesh of skinned) {
+  const category = mesh.userData.thread?.category, tuck = mesh.morphTargetDictionary?.tuck;
+  if (tuck !== undefined && worn.some(c => LAYER[c] > LAYER[category])) mesh.morphTargetInfluences[tuck] = 1;
+  if (category) {  // outer layers win near-coincident depths
+    const layer = LAYER[category] ?? 1;
+    Object.assign(mesh.material, { polygonOffset: true, polygonOffsetFactor: -layer, polygonOffsetUnits: -layer });
+    mesh.renderOrder = 1 + layer;
+  }
+}
+const face = skinned.find(m => m.morphTargetDictionary && !m.userData.thread);
 if (face) for (const name of Object.keys(face.morphTargetDictionary)) document.querySelector('#morph').add(new Option(name, name));
 document.querySelector('#stats').textContent = stats.join('\n');
 

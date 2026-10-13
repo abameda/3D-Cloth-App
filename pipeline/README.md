@@ -50,6 +50,23 @@ Run the commands from the `pipeline` folder, or set `PYTHONPATH` to it. `profile
 - `height_cm`
 - optional: `weight_kg`, `chest_cm`, `waist_cm`, `hips_cm`, `skin_rgb` (sRGB values from 0 to 1)
 
+### From the phone (studio API)
+
+`npm run server:reconstruction` serves `/v1/studio/*` next to the reconstruction API. It uses the same pairing token and the same HTTPS.
+
+- **`PUT /v1/studio/body`** with measurements → fits the body, then re-drapes every fitted garment on the new shape.
+- **`PUT /v1/studio/garments/:id`** with `{category, spec?, colorHex?}` → sews and drapes one piece. The `spec` comes from Claude's photo reading (`shape` → `specFromShape`). Without a spec, the category preset is used.
+- **`GET /v1/studio/kit`** returns a manifest of SHA-256-addressed GLBs plus job progress. The phone downloads only what changed.
+
+State lives in `.data/studio/<owner>/`, which is git-ignored and erasable with `DELETE /v1/studio`.
+
+### Simulation profiles
+
+| Profile | Use | Notes |
+|---|---|---|
+| `sim/mobile_sim_props.yaml` (default) | All garments | 1.6 cm cloth vertex spacing (GarmentCode default: 1 cm): ~2.5× fewer vertices, faster drape |
+| `sim/mobile_fast_sim_props.yaml` | Bottoms on CPU | Cloth self-collision off. On CPU, self-collision between two close trouser legs costs about 9 s per frame; with a working CUDA GPU, use the default profile |
+
 ### Viewer
 
 Start the `asset-viewer` launch configuration (`python -m http.server 8765 --directory pipeline`), then open `http://localhost:8765/viewer/index.html?files=me/body.glb,me/shirt.glb`.

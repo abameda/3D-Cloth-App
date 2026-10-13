@@ -45,7 +45,8 @@ def drape(design_file: Path, body_dir: Path, out_dir: Path, name: str, sim_confi
     body.save(pattern_dir)
     shutil.copy(design_file, pattern_dir / 'design_params.yaml')
 
-    props = Properties(str(sim_config or GARMENTCODE / 'assets' / 'Sim_props' / 'default_sim_props.yaml'))
+    # Mobile profile: 1.6 cm cloth vertex spacing (GarmentCode default 1 cm) keeps garments light on phones.
+    props = Properties(str(sim_config or Path(__file__).resolve().parents[1] / 'sim' / 'mobile_sim_props.yaml'))
     props.set_section_stats('sim', fails={}, sim_time={}, spf={}, fin_frame={}, body_collisions={}, self_collisions={})
     props.set_section_stats('render', render_time={})
     paths = PathCofig(in_element_path=pattern_dir, out_path=out_dir, in_name=pattern_dir.name.rstrip('_'),

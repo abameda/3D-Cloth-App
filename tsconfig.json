@@ -4,5 +4,5 @@
     "strict": true,
     "types": ["react", "react-native", "node"]
   },
-  "exclude": ["node_modules", ".node-build", "supabase/functions"]
+  "exclude": ["node_modules", ".node-build", "supabase/functions", "pipeline", "work", ".runtime", "dist-*"]
 }

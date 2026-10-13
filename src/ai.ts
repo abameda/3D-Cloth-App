@@ -4,7 +4,7 @@ import {cachedDailyStyling,clearDailyStylingCache,DAILY_STYLING_KEY} from './dom
 import{features}from './features';
 import { z } from 'zod';
 import { type StyleContext } from './domain/types';
-import { contextSchema, itemSchema } from './domain/aiMetadata';
+import { analyzedItemSchema, contextSchema } from './domain/aiMetadata';
 import { claudeRequest, listClaudeModels } from './domain/claude';
 import { capturePlanSchema } from './domain/capturePlan';
 import { buildStylingInput, validateStylingResult } from './domain/aiStyling';
@@ -62,4 +62,4 @@ async function request(path: string, body: unknown): Promise<unknown> {
   finally { clearTimeout(timeout); }
 }
 export async function interpretContext(prompt: string, context: StyleContext) { const {outfitMode,forecast,weatherMode,...wireContext}=context; const data = await request('/context', { prompt, context:wireContext }); const interpreted=z.object({ context: contextSchema }).parse(data).context;return {...interpreted,outfitMode,weatherMode:interpreted.weather===context.weather?weatherMode:'manual' as const,forecast:interpreted.weather===context.weather?forecast:undefined}; }
-export async function analyzePhoto(image: string) { const data = await request('/analyze', { image }); return z.object({ item: itemSchema }).parse(data).item; }
+export async function analyzePhoto(image: string) { const data = await request('/analyze', { image }); return z.object({ item: analyzedItemSchema }).parse(data).item; }

@@ -1,65 +1,78 @@
-# Install Thread on your Mac and iPhone
+# Thread on your iPhone: build once on the Mac, then develop from Windows
 
-Use a local Xcode development build to test the native 3D room and face scanner. No EAS cloud build or paid reconstruction service is needed. Swift compilation and real-phone acceptance have not yet been verified.
+The Mac does one job: compiling and signing the native iOS app, which is a **development build**. After that, the iPhone loads the app's JavaScript and 3D assets from the Windows PC over Wi-Fi. Day-to-day changes then need no Mac and no rebuild.
 
-## Bring the source to your Mac
+| Task | Machine |
+|---|---|
+| Native build and signing (Xcode) | Mac, only when native code changes or the signature expires |
+| Code, Metro bundler, hot reload | Windows |
+| Body fitting, garment sewing and draping, asset export | Windows (`pipeline/`) |
+| Interactive 3D, live face tracking | iPhone |
 
-Transfer `thread-mac-test-2026-10-12.zip` using AirDrop, a USB drive or another method you control. It contains app source, the original avatar, local native module, tests and these instructions. It excludes credentials, personal captures, downloaded reconstruction models, Windows processing tools, caches and generated builds.
+Every push to GitHub that touches native code also compiles the iOS app on GitHub's macOS runners: `.github/workflows/ios-native-build.yml`. Compile errors therefore show up before you sit down at the Mac.
 
-Extract it into a project folder on your Mac. The extracted folder is `thread-native`. Open Terminal in that folder.
+## 1. One-time Mac setup
 
-If you already use Thread in Expo Go, export an encrypted wardrobe backup before switching. The installed app has its own storage container and does not automatically inherit Expo Go data or secure credentials. Restore the backup under Profile → Backup and restore. Face models/capture references are excluded from that backup; recapture or re-download them separately. Keep your backup and password separate from this source archive.
+1. Install Xcode from the App Store and open it once. Accept the licence and install the iOS platform it offers. Then select Xcode under **Xcode → Settings → Locations → Command Line Tools**.
+2. Install Node.js 24 LTS and CocoaPods (`brew install node@24 cocoapods`).
+3. Connect and unlock your iPhone and tap **Trust**. On the iPhone, enable **Settings → Privacy & Security → Developer Mode** and restart when asked.
 
-## One-time Mac setup
+## 2. Get the code
 
-1. Install/open the full Xcode app, accept its license and install the iOS platform components it requests. Select Xcode under Xcode → Settings → Locations → Command Line Tools. This React Native version requires Xcode 16.1 or newer; use a current Xcode compatible with your Mac and phone.
-2. Install a compatible Node.js. Node 24 LTS version 24.3 or newer is a suitable choice. The installed React Native engine accepts `^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0`.
-3. Install CocoaPods. If you use Homebrew:
+```bash
+git clone https://github.com/abameda/3D-Cloth-App.git thread
+cd thread
+```
 
-   ```bash
-   brew install cocoapods
-   ```
+The repository contains no keys, photos, scans or personal models.
 
-4. Connect and unlock your iPhone, trust the Mac, and enable Developer Mode if iOS asks. The native module targets iOS 16.4 or newer. Live scanning also needs TrueDepth hardware; an iPhone SE does not provide it. Unsupported devices keep guided RGB capture.
-
-## Build and launch
-
-In the extracted project folder, run:
+## 3. Build and install the development app
 
 ```bash
 bash scripts/run-ios-local.sh
 ```
 
-This installs the locked dependencies, runs source checks, generates `ios/`, installs the local pods, builds the native app and starts Metro. Choose your connected iPhone when prompted. Keep Terminal running while testing.
+The script does the following:
+- installs the locked dependencies and runs type checks and tests;
+- generates `ios/` (this includes the ARKit face module and the dev-client launcher);
+- installs the pods;
+- builds the app and installs it on the connected iPhone.
 
-If signing stops the build, open the generated workspace:
+When Xcode asks for signing, open `ios/*.xcworkspace` and go to the **Thread** target → **Signing & Capabilities**. Choose your Apple ID's **Personal Team**, keep automatic signing on, and run again.
+- If the bundle identifier is taken, change it to something unique, such as `com.<yourname>.thread`.
+- On the iPhone, trust the developer profile under **Settings → General → VPN & Device Management**.
 
-```bash
-open ios/*.xcworkspace
+**Free signing expires after 7 days.** When the app stops opening, rebuild from the Mac with `npx expo run:ios --device`. A paid Apple Developer membership ($99/year) would remove this limit. It is optional and not required for personal testing.
+
+## 4. Daily development from Windows (no Mac)
+
+On the Windows PC, from the project folder:
+
+```powershell
+npx expo start --dev-client
 ```
 
-In Xcode, select the Thread app target → Signing & Capabilities → your own Apple team, with automatic signing enabled. A Personal Team can be used for local device development where Apple permits it; follow any trust/provisioning prompts. Do not purchase a membership or build service for this test. If the bundle identifier is unavailable to your team, choose a unique identifier for your local test and keep the existing app/backup until the new install is verified. Build for your connected iPhone with Run in Xcode, or rerun:
+On the iPhone, open **Thread** (the development build). It lists the Windows dev server, or you can scan the QR code shown in the terminal. The phone and PC must be on the same Wi-Fi network.
 
-```bash
-npx expo run:ios --device --no-install
-```
+From then on:
+- JavaScript, screens and logic changes reload instantly.
+- Avatar and garment GLBs produced by `pipeline/` arrive through the paired computer connection.
+- Only native changes need the Mac again: Swift modules, new native libraries, or app permissions in `app.json`.
 
-After the first successful install, normal JavaScript edits can reload through Metro. Native Swift/module/plugin changes require another native build. The iOS simulator is useful for UI screenshots but cannot prove TrueDepth face scanning.
+Metro's privacy middleware (`metro.config.js`) refuses to serve private folders (`.data`, `.runtime`, `work`, captures, env files) to the phone.
 
-## First test
+## 5. Connect the asset factory
 
-- Open Thread and confirm Home / Dressing Room / Profile, the room rendering, avatar rotation, clothing selection and manual avatar changes. Check light/dark and larger text.
-- Profile → Edit character → Scan my face should expose **Live front-camera scan** only when the native module and supported hardware are detected.
-- Start with one face, looking straight ahead in steady light. Confirm that instructions match actual left/right/up/down motion, that tracking and expression feedback react, and that restart/interruption clears old poses.
-- Inspect the photo and face surface from front/side/back before accepting it. It is an estimated static face surface, not a complete head, identity verification or facial-expression rig.
-- See `docs/live-face-native-acceptance.md` for restart, storage, deletion and native visual checks.
+1. On Windows, start the local engine: `npm run server:reconstruction`. Pairing uses the existing private HTTPS certificate; see `local-engine/README.md` and `local-engine/setup-phone-tls.ps1`.
+2. On the iPhone, go to **Profile → Reconstruction computer** and enter the HTTPS address and token from your own setup. Never paste the token into chats or commits.
+3. Go to **Profile → My body**, enter your height and tape measurements, and tap **Create my body**. The PC fits your body in about a minute.
+4. Open a top, bottom or layer in your wardrobe and tap **Fit on my body**. The PC sews and drapes it on your body; on CPU this takes 5–15 minutes per piece. The piece then appears in the dressing room, skinned to your avatar.
 
-If a build fails, send the first relevant Xcode error and surrounding lines, with credentials and personal image data removed. If a scan fails, report phone model, iOS version, failed step and whether the issue is tracking, direction, texture orientation or storage. Review face photos locally; do not upload private captures just to debug a build.
+## 6. What to check on the first run
 
-## AI and the reconstruction computer
+- Home and the Dressing Room show the realistic body (no longer the primitive mannequin). It breathes and blinks, and it turns smoothly when you drag.
+- Changing a top or bottom swaps the draped garment, with no skin showing through.
+- **Profile → Edit character → Scan my face** offers **Live front-camera scan** on TrueDepth iPhones. That module has been compile-checked in CI but not yet tested on a device. Report what you see.
+- Check light and dark mode, and larger text sizes.
 
-Save your existing Claude connection again under Profile → AI stylist; keys are not included in the source or wardrobe backup. The Mac build does not require an AI key to open the room or create a manual avatar.
-
-Keep the free reconstruction worker on the existing Windows computer. The Mac source archive does not contain its Windows binaries or pairing secret. Use the phone's existing private certificate and current computer HTTPS address/token under Profile → Reconstruction computer, on the same private Wi-Fi. Retrieve those settings from your own existing setup; do not copy private server keys into this archive or send them in chat.
-
-The live native face path runs on the phone. Guided multi-view RGB body/garment reconstruction still uses the paired computer. Garment surfaces remain unfitted; image-reference conversion, complete head/body realism and natural clothing fitting remain unfinished.
+If a build fails, copy the first `error:` line from Xcode, with any personal paths removed.

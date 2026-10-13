@@ -30,6 +30,7 @@ export function ProfileScreen(){
     <View>
       <SettingsRow title="My preferences" detail="Name, personal style and favorite fits" icon="edit" onPress={()=>setEdit(v=>!v)}/>
       <SettingsRow title="AI stylist" detail="Your existing Claude connection" icon="studio" onPress={()=>navigation.navigate('Connection')}/>
+      <SettingsRow title="My body" detail="Measurements for your 3D self" icon="person" onPress={()=>navigation.navigate('Body')}/>
       <SettingsRow title="Reconstruction computer" detail="Free local 3D processing" icon="room" onPress={()=>navigation.navigate('Computer')}/>
       <SettingsRow title="Account" icon="person" onPress={()=>navigation.navigate('Account')}/>
       <SettingsRow title="Privacy and data" icon="lock" onPress={()=>navigation.navigate('Privacy')}/>

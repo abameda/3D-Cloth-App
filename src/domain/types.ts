@@ -11,6 +11,8 @@ export interface Garment {
   fit: 'Regular' | 'Relaxed' | 'Slim'; formality: 1 | 2 | 3; warmth: 1 | 2 | 3;
   imageUri?: string; available: boolean; favorite: boolean;
   styles: PersonalStyle[]; source: Dataset; createdAt: string;
+  /** Pattern-level shape read from the photo; drives 3D sewing on the computer. */
+  shape?: import('./studio').GarmentShape;
 }
 export type Outfit = Partial<Record<Category, string>>;
 export type Locks = Partial<Record<Category, boolean>>;

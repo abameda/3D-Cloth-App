@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { reconstructionInputSchema, type ReconstructionInput, type ReconstructionJob } from '../src/domain/reconstruction';
 import { validateFaceScan } from '../src/domain/faceScan';
 import { parseImage } from './service';
+import type { Studio } from './studio';
 
 type Row={id:string;owner:string;request_id:string;digest:string;kind:'face'|'body'|'garment';garment_id:string|null;status:ReconstructionJob['status'];stage:string;error:string|null;attempt:number;created:number;updated:number};
 export class ReconstructionStore {
@@ -68,7 +69,7 @@ async function requestBody(req:IncomingMessage){
   return input;
 }
 
-export function createReconstructionServer(options:{root:string;store:ReconstructionStore;runner:LocalRunner;identity:(token:string)=>Promise<string>;tls?:HttpsOptions}){
+export function createReconstructionServer(options:{root:string;store:ReconstructionStore;runner:LocalRunner;identity:(token:string)=>Promise<string>;tls?:HttpsOptions;studio?:Studio}){
   const root=resolve(options.root);let active:{id:string;controller:AbortController;done:Promise<void>}|undefined;
   const uploads=new Map<string,Promise<void>>(),erasing=new Set<string>();
   let closing=false;
@@ -112,6 +113,7 @@ export function createReconstructionServer(options:{root:string;store:Reconstruc
     const rate=rates.get(owner)??{n:0,until:now+60000};rates.set(owner,rate);if(++rate.n>120){reply(429,{error:'Wait before refreshing again.'});return;}
     const path=(req.url??'').split('?')[0],match=/^\/v1\/reconstruction\/jobs\/([0-9a-f-]{36})(\/artifact|\/retry|\/photos\/([0-9]{1,2}))?$/.exec(path);
     try{
+      if(options.studio&&await options.studio.handle(req,res,owner,path))return;
       if(path==='/v1/reconstruction/capabilities'&&req.method==='GET'){reply(200,{engine:'local-colmap-openmvs',paidReconstructionServices:false,photoReconstruction:true,runtimeReady:['.runtime/colmap/bin/bin/colmap.exe','.runtime/openmvs/bin/vc17/x64/Release/TextureMesh.exe','.runtime/reconstruction-python/Scripts/python.exe','.runtime/reconstruction-models/models/u2net/u2net.onnx'].every(path=>existsSync(resolve(path))),depthFusion:false,clothFitting:false,clothSimulation:false});return;}
       if(path==='/v1/reconstruction/jobs'&&req.method==='GET'){reply(200,{jobs:await Promise.all(options.store.list(owner).map(publicJob))});return;}
       if(path==='/v1/reconstruction/jobs'&&req.method==='DELETE'){
@@ -156,7 +158,7 @@ export function createReconstructionServer(options:{root:string;store:Reconstruc
   options.store.recover();
   const cleanup=setInterval(()=>{if(closing)return;for(const row of options.store.expired()){options.store.cancel(row.owner,row.id);void rm(directory(row.id),{recursive:true,force:true}).then(()=>options.store.remove(row.owner,row.id)).catch(()=>{});}void work();},60000);
   cleanup.unref();server.on('listening',()=>void work());
-  server.on('close',()=>{closing=true;clearInterval(cleanup);active?.controller.abort();});
+  server.on('close',()=>{closing=true;clearInterval(cleanup);active?.controller.abort();options.studio?.close();});
   return server;
 }
 
