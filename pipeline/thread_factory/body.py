@@ -24,7 +24,7 @@ import anny
 from scipy.spatial import ConvexHull
 
 from . import accessories
-from .gltf import Material, Part, texture_bytes, write_skinned_glb
+from .gltf import Material, Part, texture_bytes, tintable_texture, write_skinned_glb
 from .measure import hull_perimeter, measure, torso_levels
 
 ANNY_ROOT = Path(__file__).resolve().parents[1] / 'third_party' / 'anny' / 'src' / 'anny'
@@ -259,7 +259,7 @@ def build(profile: dict, out_dir: Path) -> dict:
                              full.vertex_bone_indices.numpy().reshape(-1)), full.vertex_bone_weights.numpy().reshape(-1))
     rig = dict(bone_names=list(labels), bone_parents=list(model.bone_parents), bone_world=bone_world)
 
-    def proxy(kind: str, name: str, material: str | None = None, with_morphs=True, roughness=0.5) -> Part:
+    def proxy(kind: str, name: str, material: str | None = None, with_morphs=True, roughness=0.5, tint=None) -> Part:
         item, mat = accessories.load(kind, name)
         if material:
             mat = accessories.read_mhmat(accessories.ASSETS / kind / 'materials' / f'{material}.mhmat')
@@ -272,10 +272,11 @@ def build(profile: dict, out_dir: Path) -> dict:
                     joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
                     morphs={k: accessories.blend(item, d) for k, d in full_morphs.items()} if with_morphs else None,
                     material=Material(name=f'{kind}_{name}', roughness=roughness, double_sided=kind != 'eyes',
-                                      texture=texture_bytes(texture) if texture else None,
-                                      alpha=ALPHA.get(kind, 'MASK' if mat.get('transparent') == 'True' else 'OPAQUE')))
+                                      texture=(tintable_texture(texture) if tint else texture_bytes(texture)) if texture else None,
+                                      tint=tint, alpha=ALPHA.get(kind, 'MASK' if mat.get('transparent') == 'True' else 'OPAQUE')))
 
     style = profile.get('style', {})
+    hair_colour = tuple(style.get('hair_rgb', (0.23, 0.16, 0.11)))  # sRGB; default dark brown
     eyes = proxy('eyes', 'high-poly', material=style.get('eyes', 'brown'), roughness=0.15)
     open_faces = open_eye_openings(up, faces, eyes.positions)
     skin_texture, skin_rgb = None, tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44)))
@@ -302,7 +303,7 @@ def build(profile: dict, out_dir: Path) -> dict:
     write_skinned_glb(out_dir / 'body.glb', parts=[
         body_part,
         eyes,
-        *([] if face_photo and 'eyebrows' not in style else [proxy('eyebrows', style.get('eyebrows', 'eyebrow001'))]),
+        *([] if face_photo and 'eyebrows' not in style else [proxy('eyebrows', style.get('eyebrows', 'eyebrow001'), tint=hair_colour)]),
         proxy('eyelashes', style.get('eyelashes', 'eyelashes01')),
     ], **rig)
     # Shoe stand-ins (CC0, textured). Their delete_verts mark the foot skin hidden inside the shoe.
@@ -317,7 +318,7 @@ def build(profile: dict, out_dir: Path) -> dict:
                           'bodyTriangles': int(len(skin_faces)), 'coversBodyTriangles': bits}}, **rig)
     hair = style.get('hair', 'short02' if profile.get('sex') == 'male' else 'bob02')
     if hair != 'none':
-        write_skinned_glb(out_dir / 'hair.glb', parts=[proxy('hair', hair, with_morphs=False, roughness=0.65)],
+        write_skinned_glb(out_dir / 'hair.glb', parts=[proxy('hair', hair, with_morphs=False, roughness=0.65, tint=hair_colour)],
                           name='hair', extras={'thread': {'category': 'hair', 'style': hair}}, **rig)
     report = {'profile': profile, 'phenotypes': phenotypes, 'local_changes': local_changes,
               'achieved': {'height_cm': measurements['height'], 'chest_cm': measurements['bust'],

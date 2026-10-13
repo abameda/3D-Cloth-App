@@ -18,7 +18,18 @@ Checkout https://github.com/naver/anny.git anny d6fc027ced5c17b6b0775dee944096ad
 # --- Body environment (Anny, Apache-2.0 / CC0) ---
 if (-not (Test-Path envs\body)) { uv venv -q --python 3.11 envs\body }
 uv pip install -q --python envs\body\Scripts\python.exe torch --index-url https://download.pytorch.org/whl/cu128
-uv pip install -q --python envs\body\Scripts\python.exe -e "third_party\anny[examples]" trimesh pygltflib scipy
+uv pip install -q --python envs\body\Scripts\python.exe -e "third_party\anny[examples]" trimesh pygltflib scipy shapely `
+  opencv-python-headless "rembg[cpu]" mediapipe pyrender
+# CC0 MakeHuman system assets (eyes, brows, lashes, hair, shoes) and the MediaPipe face model (Apache-2.0).
+if (-not (Test-Path tools\mh-assets\pack\hair)) {
+  New-Item -ItemType Directory -Force tools\mh-assets | Out-Null
+  Invoke-WebRequest https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip -OutFile tools\mh-assets\pack.zip
+  Expand-Archive tools\mh-assets\pack.zip tools\mh-assets\pack -Force
+}
+if (-not (Test-Path tools\models\face_landmarker.task)) {
+  New-Item -ItemType Directory -Force tools\models | Out-Null
+  Invoke-WebRequest https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task -OutFile tools\models\face_landmarker.task
+}
 
 # --- Garment environment (GarmentCode MIT + Warp fork, NVIDIA research licence) ---
 if (-not (Test-Path tools\Library\bin\micromamba.exe)) {

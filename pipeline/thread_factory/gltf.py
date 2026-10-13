@@ -100,6 +100,7 @@ class Material:
     texture: bytes | None = None
     mime: str = 'image/png'
     alpha: str = 'OPAQUE'                 # OPAQUE | MASK (cut-out hair, lashes) | BLEND
+    tint: tuple | None = None             # sRGB multiplier for a (greyscale) texture, e.g. hair colour
 
 
 @dataclass
@@ -121,7 +122,7 @@ def _material(b: _Builder, material: Material, images: list, textures: list) -> 
         images.append({'bufferView': b.view(material.texture), 'mimeType': material.mime})
         textures.append({'source': len(images) - 1})
         pbr['baseColorTexture'] = {'index': len(textures) - 1}
-        pbr['baseColorFactor'] = [1.0, 1.0, 1.0, 1.0]
+        pbr['baseColorFactor'] = [*_linear(material.tint), 1.0] if material.tint else [1.0, 1.0, 1.0, 1.0]
     result = {'name': material.name, 'doubleSided': material.double_sided, 'pbrMetallicRoughness': pbr}
     if material.alpha != 'OPAQUE':
         result['alphaMode'] = material.alpha
@@ -194,6 +195,23 @@ def write_skinned_glb(path: Path, *, parts: list[Part], bone_names, bone_parents
     header += b' ' * (-len(header) % 4)
     body = struct.pack("<I4s", len(header), b"JSON") + header + struct.pack("<I4s", len(b.blob), b"BIN" + bytes(1)) + bytes(b.blob)
     Path(path).write_bytes(struct.pack('<4sII', b'glTF', 2, 12 + len(body)) + body)
+
+
+def tintable_texture(path: Path, max_size: int = 1024) -> bytes:
+    """Greyscale PNG normalised to mid-grey (alpha kept), so a material tint sets the final colour.
+    Hair styles ship in different natural colours; this lets every style match the person's hair."""
+    import io
+    from PIL import Image
+    with Image.open(path) as image:
+        image = image.convert('RGBA'); image.thumbnail((max_size, max_size))
+        rgba = np.asarray(image).astype(np.float32)
+    grey = rgba[..., :3] @ np.array([0.299, 0.587, 0.114])
+    visible = rgba[..., 3] > 128
+    grey *= 0.9 / max(np.percentile(grey[visible], 95) if visible.any() else 255, 1)
+    out = np.dstack([np.repeat(np.clip(grey, 0, 1)[..., None] * 255, 3, axis=2), rgba[..., 3:]]).astype(np.uint8)
+    buffer = io.BytesIO()
+    Image.fromarray(out, 'RGBA').save(buffer, 'PNG', optimize=True)
+    return buffer.getvalue()
 
 
 def texture_bytes(path: Path, max_size: int = 1024) -> bytes:
