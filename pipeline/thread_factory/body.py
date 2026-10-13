@@ -163,17 +163,21 @@ def landmarks(model, out, to_world, mesh: trimesh.Trimesh) -> dict:
 
 
 def open_eye_openings(positions: np.ndarray, faces: np.ndarray, eye_positions: np.ndarray) -> np.ndarray:
-    """Mask of skin faces to keep. Anny's simplified topology closes the eye openings with a membrane;
-    faces hit by rays cast forward (+z) from the front of each eyeball are removed so the eyes show."""
-    skin = trimesh.Trimesh(positions, faces, process=False)
-    front = eye_positions[eye_positions[:, 2] > np.percentile(eye_positions[:, 2], 70)]
-    origins = front - np.array([0, 0, 0.002])
-    hits = skin.ray.intersects_first(origins, np.tile([0.0, 0.0, 1.0], (len(origins), 1)))
+    """Mask of skin faces to keep. The MakeHuman base mesh carries low-poly helper eyeballs that would hide
+    the textured eye proxies. Those helpers are separate closed pieces (not connected to the skin), so every
+    small connected component centred inside an eye proxy is dropped; eyelids stay intact."""
     keep = np.ones(len(faces), bool)
-    found = hits >= 0
-    if found.any():
-        depth = skin.triangles_center[hits[found], 2] - origins[found, 2]
-        keep[hits[found][depth < 0.008]] = False  # only skin within 8 mm in front of the eyeball
+    skin = trimesh.Trimesh(positions, faces, process=False)
+    labels = trimesh.graph.connected_component_labels(skin.face_adjacency, node_count=len(faces))
+    centres = [eye_positions[side].mean(axis=0) for side in (eye_positions[:, 0] < 0, eye_positions[:, 0] >= 0)]
+    radius = np.linalg.norm(eye_positions[eye_positions[:, 0] < 0] - centres[0], axis=1).max()
+    for label in np.unique(labels):
+        component = labels == label
+        if component.sum() > len(faces) // 4:
+            continue  # the body itself
+        centre = positions[faces[component]].reshape(-1, 3).mean(axis=0)
+        if min(np.linalg.norm(centre - c) for c in centres) < radius:
+            keep &= ~component
     return keep
 
 

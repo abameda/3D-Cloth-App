@@ -94,7 +94,10 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
       const temp = join(ownerDir(owner), 'state.json.tmp');
       await writeFile(temp, JSON.stringify(state)); await rename(temp, join(ownerDir(owner), 'state.json'));
     };
-    const next = (saving.get(owner) ?? Promise.resolve()).then(write, write);
+    // Never rejects: a failed write is logged and retried by the next save, instead of surfacing as an
+    // unhandled rejection from fire-and-forget callers (which would stop the local engine).
+    const safe = () => write().catch(error => console.error('Studio state could not be saved:', error instanceof Error ? error.message : error));
+    const next = (saving.get(owner) ?? Promise.resolve()).then(safe, safe);
     saving.set(owner, next);
     return next;
   }

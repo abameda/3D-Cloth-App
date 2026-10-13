@@ -114,5 +114,10 @@ test('garment photos are stored as files beside the state and handed to the fact
     assert.ok(seen[0] && existsSync(seen[0]));
     const state = await readFile(join(root, 'owner-a', 'state.json'), 'utf8');
     assert.ok(!state.includes('base64'), 'photos never enter state.json');
-  } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true }); }
+    for (let i = 0; i < 200; i++) {  // let the job finish before the folder is removed
+      const kit = await (await fetch(base + '/v1/studio/kit')).json() as KitManifest;
+      if (kit.jobs.every(job => job.status === 'done' || job.status === 'failed')) break;
+      await new Promise(r => setTimeout(r, 10));
+    }
+  } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
 });
