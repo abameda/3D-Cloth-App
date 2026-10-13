@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -93,4 +94,25 @@ test('garments need a body first, and deleting the studio erases everything', as
     const empty = await h.kit();
     assert.equal(empty.body, null); assert.deepEqual(empty.garments, []);
   } finally { await h.close(); }
+});
+
+test('garment photos are stored as files beside the state and handed to the factory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'thread-studio-'));
+  const seen: (string | undefined)[] = [];
+  const runner = fakeRunner([]);
+  const studio = createStudio({ root, runner: { ...runner, async garment(input, stage, signal) { seen.push(input.frontPhoto); return runner.garment(input, stage, signal); } } });
+  const server = createServer((req, res) => void studio.handle(req, res, 'owner-a', (req.url ?? '').split('?')[0]));
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const put = (path: string, body: unknown) => fetch(base + path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    await put('/v1/studio/body', profile);
+    const jpeg = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]).toString('base64');
+    assert.equal((await put('/v1/studio/garments/tee', { garmentId: 'tee', category: 'top', photos: { front: 'data:image/jpeg;base64,AAAA' } })).status, 400);
+    assert.equal((await put('/v1/studio/garments/tee', { garmentId: 'tee', category: 'top', photos: { front: jpeg } })).status, 202);
+    for (let i = 0; i < 200 && seen.length === 0; i++) await new Promise(r => setTimeout(r, 10));
+    assert.ok(seen[0] && existsSync(seen[0]));
+    const state = await readFile(join(root, 'owner-a', 'state.json'), 'utf8');
+    assert.ok(!state.includes('base64'), 'photos never enter state.json');
+  } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true }); }
 });

@@ -83,7 +83,8 @@ def tuck_morph(garment: np.ndarray, body: trimesh.Trimesh, category: str, gap: f
 
 
 def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.85, 0.85, 0.85),
-          texture: Path | None = None, scale: float = 0.01) -> dict:
+          texture: Path | None = None, front_photo: Path | None = None, back_photo: Path | None = None,
+          scale: float = 0.01) -> dict:
     rig = np.load(body_dir / 'skeleton.npz')
     body = trimesh.Trimesh(rig['positions'], rig['faces'], process=False)
     positions, uvs, faces, face_uv = read_obj(sim_obj)
@@ -93,12 +94,18 @@ def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.
     weights = transfer_weights(positions, faces, body, rig['vertex_joints'], rig['vertex_weights'], len(bone_names))
     joints = np.argsort(-weights, axis=1)[:, :8]
     covers = covered_triangles(body, cloth)
+    texture_data, mime = (texture_bytes(texture), 'image/png') if texture else (None, 'image/png')
+    if front_photo:  # the real garment's look, projected from its flat-lay photos
+        from .photo_texture import atlas_bytes, bake
+        atlas = out.with_suffix('.atlas.png')
+        uvs, face_uv = bake(positions, faces, front_photo, back_photo, atlas)
+        texture_data, mime = atlas_bytes(atlas), 'image/jpeg'
     bits = base64.b64encode(np.packbits(covers.astype(np.uint8))).decode()
     part = Part(positions=positions, faces=faces, uv=uvs, face_uv=face_uv,
                 joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
                 morphs={'tuck': tuck_morph(positions, body, category)} if category in ('bottom', 'onepiece', 'top') else None,
                 material=Material(name=f'fabric_{category}', rgb=colour, roughness=0.85, double_sided=True,
-                                  texture=texture_bytes(texture) if texture else None))
+                                  texture=texture_data, mime=mime))
     write_skinned_glb(
         out, parts=[part], bone_names=bone_names, bone_parents=[int(p) for p in rig['bone_parents']],
         bone_world=rig['bone_world'], name=f'garment_{category}',
@@ -115,9 +122,12 @@ def main():
     parser.add_argument('--category', default='top')
     parser.add_argument('--texture', type=Path, default=None)
     parser.add_argument('--colour', default=None, help='sRGB hex, e.g. #2f3e5a, used when there is no texture')
+    parser.add_argument('--front-photo', type=Path, default=None, help='flat-lay photo of the garment front')
+    parser.add_argument('--back-photo', type=Path, default=None, help='flat-lay photo of the garment back (optional)')
     args = parser.parse_args()
     colour = tuple(int(args.colour[i:i + 2], 16) / 255 for i in (1, 3, 5)) if args.colour else (0.85, 0.85, 0.85)
-    print(json.dumps(build(args.sim, args.body, args.out, category=args.category, texture=args.texture, colour=colour), indent=2))
+    print(json.dumps(build(args.sim, args.body, args.out, category=args.category, texture=args.texture, colour=colour,
+                           front_photo=args.front_photo, back_photo=args.back_photo), indent=2))
 
 
 if __name__ == '__main__':

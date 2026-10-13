@@ -4,15 +4,17 @@ import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promise
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { parseImage } from './service';
 import { accessoryNameSchema, bodyProfileSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
 
 /** Runs the Windows asset factory (pipeline/). Each call resolves when its output file exists. */
 export interface StudioRunner {
   body(profileFile: string, outDir: string, signal: AbortSignal): Promise<void>;
-  garment(input: { specFile: string; colorHex?: string; category: string; bodyDir: string; workDir: string; outFile: string }, stage: (name: string) => void, signal: AbortSignal): Promise<void>;
+  garment(input: { specFile: string; colorHex?: string; category: string; bodyDir: string; workDir: string; outFile: string; frontPhoto?: string; backPhoto?: string }, stage: (name: string) => void, signal: AbortSignal): Promise<void>;
 }
 
-interface GarmentEntry { request: GarmentRequest; sha256?: string; bytes?: number; bodySha256?: string }
+/** Photos are stored as files beside the state, never inside state.json. */
+interface GarmentEntry { request: Omit<GarmentRequest, 'photos'>; photos?: { front: boolean; back: boolean }; sha256?: string; bytes?: number; bodySha256?: string }
 interface Accessory { name: string; category: 'hair' | 'shoes'; colors: string[]; sha256: string; bytes: number }
 interface OwnerState { profile?: BodyProfile; body?: { sha256: string; bytes: number }; accessories?: Accessory[]; garments: Record<string, GarmentEntry>; jobs: StudioJob[] }
 interface Queued { owner: string; job: StudioJob }
@@ -43,7 +45,7 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
     async body(profileFile, outDir, signal) {
       await run(bodyPython, ['-m', 'thread_factory.body', '--profile', profileFile, '--out', outDir], signal, join(outDir, 'factory.log'));
     },
-    async garment({ specFile, colorHex, category, bodyDir, workDir, outFile }, stage, signal) {
+    async garment({ specFile, colorHex, category, bodyDir, workDir, outFile, frontPhoto, backPhoto }, stage, signal) {
       const design = join(workDir, 'design.yaml');
       stage('sewing');
       await run(bodyPython, ['-m', 'thread_factory.design', '--spec', specFile, '--out', design], signal, join(workDir, 'design.log'));
@@ -51,7 +53,8 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
       await run(join(pipeline, 'scripts', 'garment-python.cmd'), ['-m', 'thread_factory.drape', '--design', design, '--body', bodyDir, '--out', join(workDir, 'drape'), '--name', 'garment'], signal, join(workDir, 'drape.log'));
       stage('rigging');
       await run(bodyPython, ['-m', 'thread_factory.garment_glb', '--sim', join(workDir, 'drape', 'garment', 'garment_sim.obj'), '--body', bodyDir,
-        '--out', outFile, '--category', category, ...(colorHex ? ['--colour', colorHex] : [])], signal, join(workDir, 'rig.log'));
+        '--out', outFile, '--category', category, ...(colorHex ? ['--colour', colorHex] : []),
+        ...(frontPhoto ? ['--front-photo', frontPhoto] : []), ...(backPhoto ? ['--back-photo', backPhoto] : [])], signal, join(workDir, 'rig.log'));
     },
   };
 }
@@ -147,7 +150,9 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
         await writeFile(join(workDir, 'spec.json'), JSON.stringify(spec));
         await mkdir(join(dir, 'garments'), { recursive: true });
         const outFile = join(dir, 'garments', `${key}.glb`);
-        await options.runner.garment({ specFile: join(workDir, 'spec.json'), colorHex: entry.request.colorHex, category: entry.request.category, bodyDir, workDir, outFile }, stage, controller.signal);
+        const photo = (side: 'front' | 'back') => entry.photos?.[side] ? join(dir, 'photos', `${key}-${side}.jpg`) : undefined;
+        await options.runner.garment({ specFile: join(workDir, 'spec.json'), colorHex: entry.request.colorHex, category: entry.request.category,
+          bodyDir, workDir, outFile, frontPhoto: photo('front'), backPhoto: photo('back') }, stage, controller.signal);
         const bytes = await readFile(outFile);
         Object.assign(entry, { sha256: sha(bytes), bytes: bytes.length, bodySha256: state.body.sha256 });
       }
@@ -163,7 +168,7 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
   async function json(req: IncomingMessage) {
     if (!req.headers['content-type']?.startsWith('application/json')) throw Error('Send JSON.');
     const chunks: Buffer[] = []; let size = 0;
-    for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024) throw Error('Request too large.'); chunks.push(Buffer.from(chunk)); }
+    for await (const chunk of req) { size += chunk.length; if (size > 9 * 1024 * 1024) throw Error('Request too large.'); chunks.push(Buffer.from(chunk)); }
     return JSON.parse(Buffer.concat(chunks).toString()) as unknown;
   }
 
@@ -196,7 +201,18 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
     if (garmentPath?.[1] === 'garments' && req.method === 'PUT') {
       let request: GarmentRequest; try { request = garmentRequestSchema.parse(await json(req)); } catch { reply(400, { error: 'This piece cannot be fitted yet.' }); return true; }
       if (request.garmentId !== garmentId) { reply(400, { error: 'Mismatched piece.' }); return true; }
-      state.garments[request.garmentId] = { request }; const job = enqueue(owner, state, 'garment', request.garmentId);
+      const { photos, ...rest } = request;
+      const key = fileKey(request.garmentId), photoDir = join(ownerDir(owner), 'photos');
+      try {
+        await mkdir(photoDir, { recursive: true });
+        for (const side of ['front', 'back'] as const) {
+          const file = join(photoDir, `${key}-${side}.jpg`);
+          if (photos?.[side]) await writeFile(file, Buffer.from(parseImage(photos[side]).split(',')[1], 'base64'));
+          else await rm(file, { force: true });
+        }
+      } catch { reply(400, { error: 'Send clear JPEG photos under 3 MB.' }); return true; }
+      state.garments[request.garmentId] = { request: rest, photos: { front: !!photos?.front, back: !!photos?.back } };
+      const job = enqueue(owner, state, 'garment', request.garmentId);
       await save(owner); reply(202, { job }); void work(); return true;
     }
     if (garmentPath?.[1] === 'garments' && req.method === 'DELETE') {
@@ -204,6 +220,7 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
       delete state.garments[garmentId!];
       await rm(join(ownerDir(owner), 'garments', `${fileKey(garmentId!)}.glb`), { force: true });
       await rm(join(ownerDir(owner), 'work', fileKey(garmentId!)), { recursive: true, force: true });
+      for (const side of ['front', 'back']) await rm(join(ownerDir(owner), 'photos', `${fileKey(garmentId!)}-${side}.jpg`), { force: true });
       await save(owner); reply(200, { deleted: true }); return true;
     }
     if (path === '/v1/studio/assets/body' && req.method === 'GET') {

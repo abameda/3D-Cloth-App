@@ -34,6 +34,9 @@ export const garmentRequestSchema = z.object({
   category: z.enum(categories),
   spec: garmentSpecSchema.optional(),
   colorHex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  // Flat-lay photos of the real piece (JPEG data URIs); the computer projects them onto the draped cloth.
+  photos: z.object({ front: z.string().startsWith('data:image/jpeg;base64,').max(4_200_000),
+                     back: z.string().startsWith('data:image/jpeg;base64,').max(4_200_000).optional() }).strict().optional(),
 }).strict().refine(value => !!value.spec || !!presetForCategory[value.category], { message: 'This category cannot be draped yet.' });
 export type GarmentRequest = z.infer<typeof garmentRequestSchema>;
 
