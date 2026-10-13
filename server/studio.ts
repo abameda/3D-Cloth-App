@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseImage } from './service';
-import { accessoryNameSchema, bodyProfileSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
+import { accessoryNameSchema, bodyRequestSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
 
 /** Runs the Windows asset factory (pipeline/). Each call resolves when its output file exists. */
 export interface StudioRunner {
@@ -127,7 +127,8 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
         if (!state.profile) throw Error('Enter your measurements first.');
         stage('fitting_body');
         const work = join(dir, 'body-next'); await rm(work, { recursive: true, force: true }); await mkdir(work, { recursive: true });
-        await writeFile(join(work, 'profile.json'), JSON.stringify(state.profile));
+        const selfie = join(dir, 'face.jpg');
+        await writeFile(join(work, 'profile.json'), JSON.stringify({ ...state.profile, ...(existsSync(selfie) ? { face_photo: selfie } : {}) }));
         await options.runner.body(join(work, 'profile.json'), work, controller.signal);
         await rm(bodyDir, { recursive: true, force: true }); await mkdir(dir, { recursive: true });
         await rename(work, bodyDir);
@@ -198,7 +199,15 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
     const garmentId = garmentPath ? decodeURIComponent(garmentPath[2]) : undefined;
     if (path === '/v1/studio/kit' && req.method === 'GET') { reply(200, manifest(state)); return true; }
     if (path === '/v1/studio/body' && req.method === 'PUT') {
-      let profile: BodyProfile; try { profile = bodyProfileSchema.parse(await json(req)); } catch { reply(400, { error: 'Check your measurements.' }); return true; }
+      let request: ReturnType<typeof bodyRequestSchema.parse>;
+      try { request = bodyRequestSchema.parse(await json(req)); } catch { reply(400, { error: 'Check your measurements.' }); return true; }
+      const { facePhoto, keepFace, ...profile } = request;
+      const selfie = join(ownerDir(owner), 'face.jpg');
+      try {
+        await mkdir(ownerDir(owner), { recursive: true });
+        if (facePhoto) await writeFile(selfie, Buffer.from(parseImage(facePhoto).split(',')[1], 'base64'));
+        else if (!keepFace) await rm(selfie, { force: true });
+      } catch { reply(400, { error: 'Use a clear JPEG selfie under 3 MB.' }); return true; }
       state.profile = profile; const job = enqueue(owner, state, 'body'); await save(owner); reply(202, { job }); void work(); return true;
     }
     if (garmentPath?.[1] === 'garments' && req.method === 'PUT') {

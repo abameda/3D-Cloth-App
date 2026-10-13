@@ -16,6 +16,11 @@ export const bodyProfileSchema = z.object({
   skin_rgb: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
 }).strict();
 export type BodyProfile = z.infer<typeof bodyProfileSchema>;
+/** A front-facing selfie (JPEG data URI) shapes and textures the face; it is stored only on the computer. */
+export const bodyRequestSchema = bodyProfileSchema.extend({
+  facePhoto: z.string().startsWith('data:image/jpeg;base64,').max(4_200_000).optional(),
+  keepFace: z.boolean().optional(),  // reuse the selfie already on the computer
+}).strict();
 
 export const garmentPresets = ['tshirt', 'longsleeve', 'overshirt', 'trousers', 'shorts', 'skirt'] as const;
 /** Draping-capable wardrobe categories and their default pattern presets. */

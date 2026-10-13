@@ -28,7 +28,10 @@ async function request(path: string, method = 'GET', body?: unknown): Promise<Re
 }
 
 export async function getStudioKit(): Promise<KitManifest> { return kitManifestSchema.parse(await (await request('/v1/studio/kit')).json()); }
-export async function sendBodyProfile(profile: BodyProfile) { await request('/v1/studio/body', 'PUT', profile); }
+/** facePhoto: JPEG data URI of a front selfie; keepFace reuses the selfie already on the computer. */
+export async function sendBodyProfile(profile: BodyProfile, face?: { facePhoto?: string; keepFace?: boolean }) {
+  await request('/v1/studio/body', 'PUT', { ...profile, ...face });
+}
 export async function sendGarmentForFitting(input: GarmentRequest) { await request(`/v1/studio/garments/${encodeURIComponent(input.garmentId)}`, 'PUT', input); }
 export async function removeFittedGarment(garmentId: string) { await request(`/v1/studio/garments/${encodeURIComponent(garmentId)}`, 'DELETE'); }
 

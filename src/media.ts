@@ -3,12 +3,12 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Directory, File, Paths } from 'expo-file-system';
 import { makeId } from './domain/state';
 
-export async function choosePhoto(camera: boolean): Promise<string | undefined> {
+export async function choosePhoto(camera: boolean, front = false): Promise<string | undefined> {
   if (camera) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) throw new Error('Camera access is off. Enable it in your device settings, or choose an existing photo.');
   }
-  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: .85, allowsEditing: false };
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: .85, allowsEditing: false, ...(front ? { cameraType: ImagePicker.CameraType.front } : {}) };
   const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
   if (result.canceled || !result.assets[0]) return;
   const asset=result.assets[0];const image = await manipulateAsync(asset.uri, [{ resize: asset.width>=asset.height?{width:Math.min(asset.width,1200)}:{height:Math.min(asset.height,1200)} }], { compress: .8, format: SaveFormat.JPEG });

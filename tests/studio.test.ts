@@ -121,3 +121,26 @@ test('garment photos are stored as files beside the state and handed to the fact
     }
   } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
 });
+
+test('a selfie reaches the factory as a file and is deleted when no longer wanted', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'thread-studio-'));
+  const profiles: Record<string, unknown>[] = [];
+  const runner = fakeRunner([]);
+  const studio = createStudio({ root, runner: { ...runner, async body(file, out, signal) { profiles.push(JSON.parse(await readFile(file, 'utf8'))); return runner.body(file, out, signal); } } });
+  const server = createServer((req, res) => void studio.handle(req, res, 'owner-a', (req.url ?? '').split('?')[0]));
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const put = (body: unknown) => fetch(base + '/v1/studio/body', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const settle = async (count: number) => { for (let i = 0; i < 300 && profiles.length < count; i++) await new Promise(r => setTimeout(r, 10)); };
+  try {
+    const jpeg = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 9, 9, 0xff, 0xd9]).toString('base64');
+    assert.equal((await put({ ...profile, facePhoto: jpeg })).status, 202); await settle(1);
+    assert.ok(typeof profiles[0].face_photo === 'string' && existsSync(profiles[0].face_photo as string));
+    assert.equal((await put({ ...profile, keepFace: true })).status, 202); await settle(2);
+    assert.ok(profiles[1].face_photo, 'kept selfie is reused');
+    assert.equal((await put(profile)).status, 202); await settle(3);
+    assert.equal(profiles[2].face_photo, undefined);
+    assert.ok(!existsSync(join(root, 'owner-a', 'face.jpg')), 'selfie removed from the computer');
+    for (let i = 0; i < 200; i++) { const kit = await (await fetch(base + '/v1/studio/kit')).json() as KitManifest; if (kit.jobs.every(j => j.status === 'done' || j.status === 'failed')) break; await new Promise(r => setTimeout(r, 10)); }
+  } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
+});

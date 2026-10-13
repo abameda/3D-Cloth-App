@@ -1,14 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { bodyProfileSchema, studioStages, type BodyProfile, type StudioJob } from '../domain/studio';
+import { choosePhoto, photoDataUri, removeManagedPhoto } from '../media';
 import { getStudioKit, sendBodyProfile, syncPersonalKit } from '../studio';
 import { Button, Chip, Field, Label, Notice, Screen, Section, ui } from '../ui/primitives';
 
 const DRAFT = 'thread.studio.profile-draft.v1';
-type Draft = Record<'age' | 'height_cm' | 'weight_kg' | 'chest_cm' | 'waist_cm' | 'hips_cm', string> & { sex?: BodyProfile['sex'] };
+type Draft = Record<'age' | 'height_cm' | 'weight_kg' | 'chest_cm' | 'waist_cm' | 'hips_cm', string> & {
+  sex?: BodyProfile['sex'];
+  selfie?: string;       // local photo not yet sent
+  faceOnComputer?: boolean;  // a selfie is already stored on the computer
+};
 const empty: Draft = { age: '', height_cm: '', weight_kg: '', chest_cm: '', waist_cm: '', hips_cm: '' };
-const fields: { key: keyof Omit<Draft, 'sex'>; label: string; hint: string; optional?: boolean }[] = [
+type MeasureKey = 'age' | 'height_cm' | 'weight_kg' | 'chest_cm' | 'waist_cm' | 'hips_cm';
+const fields: { key: MeasureKey; label: string; hint: string; optional?: boolean }[] = [
   { key: 'height_cm', label: 'Height (cm)', hint: 'Barefoot, standing straight' },
   { key: 'age', label: 'Age', hint: 'Shapes posture and proportions' },
   { key: 'weight_kg', label: 'Weight (kg)', hint: 'Optional', optional: true },
@@ -52,8 +58,11 @@ export function BodyScreen() {
     if (!parsed.success) { setError(true); setMessage('Choose a body type and enter a height (130–220 cm) and age (16–90). Tape measurements must be in centimetres.'); return; }
     setBusy(true);
     try {
-      await AsyncStorage.setItem(DRAFT, JSON.stringify(draft));
-      await sendBodyProfile(parsed.data);
+      const face = draft.selfie ? { facePhoto: await photoDataUri(draft.selfie) } : { keepFace: !!draft.faceOnComputer };
+      await sendBodyProfile(parsed.data, face);
+      if (draft.selfie) removeManagedPhoto(draft.selfie);  // the computer keeps the only copy it needs
+      const saved = { ...draft, selfie: undefined, faceOnComputer: !!draft.selfie || !!draft.faceOnComputer };
+      setDraft(saved); await AsyncStorage.setItem(DRAFT, JSON.stringify(saved));
       setMessage('Sent to your computer. Fitting takes a minute or two; clothes are redraped afterwards.'); poll();
     } catch (e) { setError(true); setMessage(e instanceof Error ? e.message : 'Couldn’t reach your computer.'); }
     finally { setBusy(false); }
@@ -74,6 +83,16 @@ export function BodyScreen() {
           onChangeText={value => setDraft(d => ({ ...d, [field.key]: value }))} />
         <Label muted size={13}>{field.hint}</Label>
       </View>)}
+    </Section>
+    <Section title="Your face (optional)">
+      <Label muted size={14}>A sharp, front-facing selfie in even light shapes your 3D face and gives it your skin, brows and eye colour. It is sent only to your own computer.</Label>
+      {draft.selfie ? <Image source={{ uri: draft.selfie }} accessibilityLabel="Selected selfie" style={{ width: 120, height: 150, borderRadius: 12 }} />
+        : draft.faceOnComputer ? <Label size={14}>Your selfie is on your computer and will be reused.</Label> : null}
+      <View style={ui.wrap}>
+        <Button title="Take a selfie" secondary icon="camera" onPress={() => void choosePhoto(true, true).then(uri => uri && setDraft(d => ({ ...d, selfie: uri }))).catch(e => { setError(true); setMessage(e instanceof Error ? e.message : 'Camera unavailable.'); })} />
+        <Button title="Choose a photo" secondary onPress={() => void choosePhoto(false).then(uri => uri && setDraft(d => ({ ...d, selfie: uri }))).catch(() => {})} />
+        {(draft.selfie || draft.faceOnComputer) && <Button title="Don't use my face" secondary onPress={() => { if (draft.selfie) removeManagedPhoto(draft.selfie); setDraft(d => ({ ...d, selfie: undefined, faceOnComputer: false })); }} />}
+      </View>
     </Section>
     {job && <Notice error={job.status === 'failed'}>{working ? `${studioStages[job.stage as keyof typeof studioStages] ?? job.stage}…` : job.status === 'done' ? 'Last fit finished.' : job.error ?? 'The last fit stopped.'}</Notice>}
     {!!message && <Notice error={error}>{message}</Notice>}

@@ -185,6 +185,19 @@ def build(profile: dict, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     model = load_model()
     phenotypes, local_changes = BodyFitter(model).fit(profile)
+    face_photo = None
+    if profile.get('face_photo'):  # face shape from a selfie (MediaPipe landmarks -> Anny face controls)
+        from PIL import Image, ImageOps
+        from .face import detect, fit_face
+        with Image.open(profile['face_photo']) as photo:
+            face_rgb = np.array(ImageOps.exif_transpose(photo).convert('RGB'))
+        points, _ = detect(face_rgb)
+        face_photo = (face_rgb, points)
+        local_changes, face_rms = fit_face(model, phenotypes, local_changes, points)
+        profile = {**profile, 'face_fit_rms_px': round(face_rms, 2)}
+    # Manual face/body sliders (values in [-1, 1]) apply last and win over fitted values.
+    allowed = set(model.local_change_labels)
+    local_changes.update({k: float(np.clip(v, -1, 1)) for k, v in profile.get('face_controls', {}).items() if k in allowed})
     with torch.no_grad():
         out = model(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes)
         vertices = out['rest_vertices'][0].numpy().astype(np.float64)
@@ -265,19 +278,31 @@ def build(profile: dict, out_dir: Path) -> dict:
     style = profile.get('style', {})
     eyes = proxy('eyes', 'high-poly', material=style.get('eyes', 'brown'), roughness=0.15)
     open_faces = open_eye_openings(up, faces, eyes.positions)
+    skin_texture, skin_rgb = None, tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44)))
+    if face_photo:  # the selfie becomes the face's skin; body tone and eye colour follow it
+        import io
+        from PIL import Image
+        from .face import bake_face_texture
+        atlas, skin_uv, skin_face_uv, skin_rgb, eye_colour = bake_face_texture(
+            up, faces[open_faces], model.texture_coordinates.numpy(), model.face_texture_coordinate_indices.numpy()[open_faces], *face_photo)
+        buffer = io.BytesIO(); Image.fromarray(atlas).save(buffer, 'JPEG', quality=90); skin_texture = buffer.getvalue()
+        Image.fromarray(atlas).save(out_dir / 'skin_atlas.jpg', quality=90)
+        if 'eyes' not in style:
+            eyes = proxy('eyes', 'high-poly', material=eye_colour, roughness=0.15)
     # Skeleton, skin weights and the exact skin triangle list the phone renders: garments bind to this
     # rig and index their body-coverage masks into these triangles.
     np.savez_compressed(out_dir / 'skeleton.npz', bone_names=np.array(labels), bone_parents=np.array(model.bone_parents),
                         bone_world=bone_world, vertex_joints=model.vertex_bone_indices.numpy(),
                         vertex_weights=model.vertex_bone_weights.numpy(), positions=up, faces=faces[open_faces])
-    body_part = Part(positions=up, faces=faces[open_faces], uv=model.texture_coordinates.numpy(),
-                     face_uv=model.face_texture_coordinate_indices.numpy()[open_faces],
+    body_part = Part(positions=up, faces=faces[open_faces],
+                     uv=skin_uv if face_photo else model.texture_coordinates.numpy(),
+                     face_uv=skin_face_uv if face_photo else model.face_texture_coordinate_indices.numpy()[open_faces],
                      joint_indices=model.vertex_bone_indices.numpy(), joint_weights=model.vertex_bone_weights.numpy(),
-                     morphs=morphs, material=Material(name='skin', rgb=tuple(profile.get('skin_rgb', (0.78, 0.57, 0.44))), roughness=0.55))
+                     morphs=morphs, material=Material(name='skin', rgb=skin_rgb, roughness=0.55, texture=skin_texture, mime='image/jpeg'))
     write_skinned_glb(out_dir / 'body.glb', parts=[
         body_part,
         eyes,
-        proxy('eyebrows', style.get('eyebrows', 'eyebrow001')),
+        *([] if face_photo and 'eyebrows' not in style else [proxy('eyebrows', style.get('eyebrows', 'eyebrow001'))]),
         proxy('eyelashes', style.get('eyelashes', 'eyelashes01')),
     ], **rig)
     # Shoe stand-ins (CC0, textured). Their delete_verts mark the foot skin hidden inside the shoe.
