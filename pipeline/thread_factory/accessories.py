@@ -40,7 +40,7 @@ def read_mhclo(path: Path) -> Proxy:
             scales[parts[0][0]] = (int(parts[1]), int(parts[2]), float(parts[3]))
         elif parts[0] == 'obj_file':
             obj_file = parts[1]
-        elif parts[0] == 'material':
+        elif parts[0] == "material":
             material = parts[1]
         elif parts[0] == 'verts':
             mode = 'verts'
@@ -61,8 +61,7 @@ def read_mhclo(path: Path) -> Proxy:
                     deleted.extend(range(int(tokens[i]), int(tokens[i + 2]) + 1)); i += 3
                 else:
                     deleted.append(int(tokens[i])); i += 1
-        else:
-            mode = None  # any other keyword ends a numeric section
+        # Other keywords (material, vertexboneweights_file...) may follow 'verts 0' and do not end the section.
     return Proxy(path.stem, path.parent, obj_file, scales, np.array(refs), np.array(weights), np.array(offsets),
                  material, np.array(sorted(set(deleted)), int))
 

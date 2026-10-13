@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { bodyProfileSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
+import { accessoryNameSchema, bodyProfileSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
 
 /** Runs the Windows asset factory (pipeline/). Each call resolves when its output file exists. */
 export interface StudioRunner {
@@ -13,7 +13,8 @@ export interface StudioRunner {
 }
 
 interface GarmentEntry { request: GarmentRequest; sha256?: string; bytes?: number; bodySha256?: string }
-interface OwnerState { profile?: BodyProfile; body?: { sha256: string; bytes: number }; garments: Record<string, GarmentEntry>; jobs: StudioJob[] }
+interface Accessory { name: string; category: 'hair' | 'shoes'; colors: string[]; sha256: string; bytes: number }
+interface OwnerState { profile?: BodyProfile; body?: { sha256: string; bytes: number }; accessories?: Accessory[]; garments: Record<string, GarmentEntry>; jobs: StudioJob[] }
 interface Queued { owner: string; job: StudioJob }
 
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -53,6 +54,14 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
         '--out', outFile, '--category', category, ...(colorHex ? ['--colour', colorHex] : [])], signal, join(workDir, 'rig.log'));
     },
   };
+}
+
+/** thread extras of the first node that has them (category, colours) from a GLB's JSON chunk. */
+function glbExtras(data: Buffer): { colors?: string[] } {
+  try {
+    const json = JSON.parse(data.subarray(20, 20 + data.readUInt32LE(12)).toString()) as { nodes?: { extras?: { thread?: { colors?: string[] } } }[] };
+    return json.nodes?.find(node => node.extras?.thread)?.extras?.thread ?? {};
+  } catch { return {}; }
 }
 
 export function createStudio(options: { root: string; runner: StudioRunner }) {
@@ -118,6 +127,14 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
         await rename(work, bodyDir);
         const bytes = await readFile(join(bodyDir, 'body.glb'));
         state.body = { sha256: sha(bytes), bytes: bytes.length };
+        state.accessories = [];
+        for (const file of (await readdir(bodyDir)).filter(name => name.endsWith('.glb') && name !== 'body.glb').sort()) {
+          const name = file.slice(0, -4);
+          if (!accessoryNameSchema.safeParse(name).success) continue;
+          const data = await readFile(join(bodyDir, file));
+          const extras = glbExtras(data);
+          state.accessories.push({ name, category: name === 'hair' ? 'hair' : 'shoes', colors: extras.colors ?? [], sha256: sha(data), bytes: data.length });
+        }
         // Garments are fitted to one exact body: re-drape everything on the new shape.
         for (const garmentId of Object.keys(state.garments)) enqueue(owner, state, 'garment', garmentId);
       } else {
@@ -153,6 +170,7 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
   function manifest(state: OwnerState): KitManifest {
     return {
       body: state.body && state.profile ? { ...state.body, profile: state.profile } : null,
+      accessories: state.body ? state.accessories ?? [] : [],
       garments: Object.entries(state.garments).filter(([, g]) => g.sha256 && g.bodySha256 === state.body?.sha256)
         .map(([garmentId, g]) => ({ garmentId, category: g.request.category, sha256: g.sha256!, bytes: g.bytes!, bodySha256: g.bodySha256! })),
       jobs: state.jobs.slice(0, 20),
@@ -191,6 +209,11 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
     if (path === '/v1/studio/assets/body' && req.method === 'GET') {
       if (!state.body) { reply(404, { error: 'No body yet.' }); return true; }
       await sendGlb(join(ownerDir(owner), 'body', 'body.glb')); return true;
+    }
+    const accessory = /^\/v1\/studio\/assets\/accessories\/([a-z0-9_]{1,40})$/.exec(path);
+    if (accessory && req.method === 'GET') {
+      if (!state.accessories?.some(a => a.name === accessory[1])) { reply(404, { error: 'Not available.' }); return true; }
+      await sendGlb(join(ownerDir(owner), 'body', `${accessory[1]}.glb`)); return true;
     }
     if (garmentPath?.[1] === 'assets/garments' && req.method === 'GET') {
       if (!state.garments[garmentId!]?.sha256) { reply(404, { error: 'Not fitted yet.' }); return true; }

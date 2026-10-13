@@ -43,8 +43,11 @@ export const studioJobSchema = z.object({
   status: z.enum(['queued', 'running', 'done', 'failed']), stage: z.string(), error: z.string().nullable(), updated: z.number(),
 });
 export type StudioJob = z.infer<typeof studioJobSchema>;
+/** Accessories produced with the body: hair and colour-matched shoe stand-ins. */
+export const accessoryNameSchema = z.string().regex(/^(hair|shoes_shoes0[1-6])$/);
 export const kitManifestSchema = z.object({
   body: assetSchema.extend({ profile: bodyProfileSchema }).nullable(),
+  accessories: z.array(assetSchema.extend({ name: accessoryNameSchema, category: z.enum(['hair', 'shoes']), colors: z.array(z.string()).max(13) })).default([]),
   garments: z.array(assetSchema.extend({ garmentId: z.string(), category: z.enum(categories), bodySha256: z.string() })),
   jobs: z.array(studioJobSchema),
 });

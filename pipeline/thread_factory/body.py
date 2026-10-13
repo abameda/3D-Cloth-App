@@ -11,6 +11,7 @@ Usage: python -m thread_factory.body --profile profile.json --out <dir>
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 
@@ -34,6 +35,9 @@ LEG_BONES = ('upperleg', 'lowerleg', 'foot', 'toe')
 # Eyes: the cornea shell is fully transparent (cut-out). Brows/lashes are soft strokes (blended, small, few sort issues).
 # Hair is cut-out: blended hair cannot be depth-sorted reliably on phones.
 ALPHA = {'eyes': 'MASK', 'eyebrows': 'BLEND', 'eyelashes': 'BLEND', 'hair': 'MASK'}
+# CC0 shoe stand-ins and the wardrobe colours each one represents.
+SHOES = {'shoes05': ['White', 'Beige', 'Unknown'], 'shoes06': ['Navy', 'Blue', 'Purple'], 'shoes04': ['Black'],
+         'shoes01': ['Brown', 'Red', 'Yellow'], 'shoes02': ['Grey', 'Green', 'Pink'], 'shoes03': []}
 
 
 def age_parameter(years: float) -> float:
@@ -272,6 +276,16 @@ def build(profile: dict, out_dir: Path) -> dict:
         proxy('eyebrows', style.get('eyebrows', 'eyebrow001')),
         proxy('eyelashes', style.get('eyelashes', 'eyelashes01')),
     ], **rig)
+    # Shoe stand-ins (CC0, textured). Their delete_verts mark the foot skin hidden inside the shoe.
+    skin_faces = faces[open_faces]
+    base_index = model.base_mesh_vertex_indices.numpy()
+    for name, colours in SHOES.items():
+        item, _ = accessories.load('clothes', name)
+        hidden = np.isin(base_index[skin_faces], item.delete_verts).all(axis=1)
+        bits = base64.b64encode(np.packbits(hidden.astype(np.uint8))).decode()
+        write_skinned_glb(out_dir / f'shoes_{name}.glb', parts=[proxy('clothes', name, with_morphs=False, roughness=0.5)],
+                          name=f'shoes_{name}', extras={'thread': {'category': 'shoes', 'colors': colours,
+                          'bodyTriangles': int(len(skin_faces)), 'coversBodyTriangles': bits}}, **rig)
     hair = style.get('hair', 'short02' if profile.get('sex') == 'male' else 'bob02')
     if hair != 'none':
         write_skinned_glb(out_dir / 'hair.glb', parts=[proxy('hair', hair, with_morphs=False, roughness=0.65)],

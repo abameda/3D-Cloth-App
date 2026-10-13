@@ -15,6 +15,8 @@ function fakeRunner(calls: string[]): StudioRunner {
       calls.push('body');
       await writeFile(join(outDir, 'body.glb'), `body-${++version}`);
       await writeFile(join(outDir, 'skeleton.npz'), 'rig');
+      await writeFile(join(outDir, 'hair.glb'), 'hair');
+      await writeFile(join(outDir, 'not-allowed.glb'), 'x');
     },
     async garment({ outFile, category }, stage) {
       calls.push(`garment:${category}`); stage('draping');
@@ -45,6 +47,9 @@ test('measurements build a body, garments drape on it, and the kit lists both', 
     assert.equal((await h.call('/v1/studio/body', 'PUT', profile)).status, 202);
     let manifest = await h.settled();
     assert.equal(manifest.body?.profile.height_cm, 178);
+    assert.deepEqual(manifest.accessories.map(a => [a.name, a.category]), [['hair', 'hair']]);  // unknown files are never served
+    assert.equal(await (await h.call('/v1/studio/assets/accessories/hair')).text(), 'hair');
+    assert.equal((await h.call('/v1/studio/assets/accessories/not-allowed')).status, 404);
     const garment = await h.call('/v1/studio/garments/shirt%201', 'PUT', { garmentId: 'shirt 1', category: 'top', colorHex: '#223344' });
     assert.equal(garment.status, 202);
     manifest = await h.settled();

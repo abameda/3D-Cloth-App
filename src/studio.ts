@@ -48,6 +48,10 @@ export async function syncPersonalKit(): Promise<AvatarKit | undefined> {
   const manifest = await getStudioKit();
   if (!manifest.body) { await AsyncStorage.removeItem(INDEX); return undefined; }
   const kit: AvatarKit = { source: 'personal', body: await download('/v1/studio/assets/body', manifest.body.sha256, manifest.body.bytes), garments: [] };
+  for (const item of manifest.accessories) {
+    const uri = await download(`/v1/studio/assets/accessories/${item.name}`, item.sha256, item.bytes);
+    kit.garments.push({ id: item.name, category: item.category, colors: item.colors, uri });
+  }
   for (const garment of manifest.garments) {
     const uri = await download(`/v1/studio/assets/garments/${encodeURIComponent(garment.garmentId)}`, garment.sha256, garment.bytes);
     kit.garments.push({ id: garment.garmentId, garmentId: garment.garmentId, category: garment.category, uri });

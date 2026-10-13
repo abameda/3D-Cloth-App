@@ -14,7 +14,8 @@ import { parseNativeGlb } from './nativeGltf';
  * covers so hidden skin cannot poke through cloth.
  */
 export type KitCategory = Category | 'hair';
-export interface KitGarment { id: string; category: KitCategory; uri: string; garmentId?: string }
+/** colors: wardrobe colours a stand-in represents (e.g. white trainers for White shoes). */
+export interface KitGarment { id: string; category: KitCategory; uri: string; garmentId?: string; colors?: string[] }
 export interface AvatarKit { source: 'demo' | 'personal'; body: string; garments: KitGarment[] }
 
 interface LoadedGarment { asset: KitGarment; mesh: THREE.SkinnedMesh; covers?: Uint8Array; material: THREE.MeshStandardMaterial; textured: boolean; tuck?: number }
@@ -41,6 +42,10 @@ export async function demoKit(): Promise<AvatarKit> {
       { id: 'demo-top', category: 'top', uri: await resolve(require('../../assets/avatar/kit/top.glb')) },
       { id: 'demo-bottom', category: 'bottom', uri: await resolve(require('../../assets/avatar/kit/bottom.glb')) },
       { id: 'demo-hair', category: 'hair', uri: await resolve(require('../../assets/avatar/kit/hair.glb')) },
+      { id: 'demo-shoes-white', category: 'shoes', colors: ['White', 'Beige', 'Unknown', 'Grey', 'Green', 'Pink'], uri: await resolve(require('../../assets/avatar/kit/shoes-white.glb')) },
+      { id: 'demo-shoes-navy', category: 'shoes', colors: ['Navy', 'Blue', 'Purple'], uri: await resolve(require('../../assets/avatar/kit/shoes-navy.glb')) },
+      { id: 'demo-shoes-black', category: 'shoes', colors: ['Black'], uri: await resolve(require('../../assets/avatar/kit/shoes-black.glb')) },
+      { id: 'demo-shoes-brown', category: 'shoes', colors: ['Brown', 'Red', 'Yellow'], uri: await resolve(require('../../assets/avatar/kit/shoes-brown.glb')) },
     ],
   };
 }
@@ -100,7 +105,8 @@ export function dressKit(kit: LoadedKit, outfit: AvatarOutfit, palette: Record<s
   const worn = new Map<LoadedGarment, string | undefined>();
   for (const piece of outfit.pieces) {
     const own = kit.garments.find(g => g.asset.garmentId && g.asset.garmentId === piece.garmentId);
-    const standIn = kit.garments.find(g => !g.asset.garmentId && g.asset.category === piece.category);
+    const standIns = kit.garments.filter(g => !g.asset.garmentId && g.asset.category === piece.category);
+    const standIn = standIns.find(g => g.asset.colors?.includes(piece.color)) ?? standIns[0];
     const chosen = own ?? standIn;
     if (chosen) worn.set(chosen, own ? undefined : palette[piece.color] ?? palette.Unknown);
   }
