@@ -84,6 +84,9 @@ What the extra resolution buys, seen in Thread Studio: at 1.6 cm the tee's neckl
 
 Every garment also carries a small tiling normal map (`thread_factory/fabric.py`): jersey knit for tops, twill for trousers and outerwear, repeated at real size through `KHR_texture_transform`. It gives cloth the light response of yarn instead of smooth plastic.
 
+Rigging a garment for the phone (skin weights, skin hiding, tuck morph, photo texture) stays on the CPU and is now quick: a cold run for a 1 cm photo-textured tee went from 32 s to 7 s. Most of the gain came from two changes. U2-Net now runs directly through ONNX Runtime, with rembg's exact pre- and post-processing and an identical mask, so the 8–10 s rembg import is gone. Nearest-surface and ray queries now use Warp's BVH on the CPU: 0.03 s versus 1.6 s in trimesh, results within 1 µm. A GPU has nothing left to win in this stage.
+
+Photo textures now switch between the front and back photo along the garment's real sewing seams, using GarmentCode's per-vertex panel labels. Previously each triangle chose its photo from its normal, which left a zigzag of white shards along side seams and sleeves. Sideways cloth (sleeve undersides, side seams) samples only the clean interior of the photo, a few pixels inside the outline, where colour isn't mixed with the background. That removes the pale patches. Vertices also share UVs, so a 1 cm photo tee is 1.3 MB instead of 4.8 MB.
 The body build stays on the CPU: its fits are hundreds of sequential steps on one small mesh, where GPU launch overhead dominates (selfie body: 90 s on the CPU, 231 s on the GPU). Computing all 52 expressions in one batched pass cut that stage from 14 s to 3 s; a selfie body now takes about 65 s. `THREAD_DEVICE=cuda` opts the body into the GPU.
 ### Thread Studio (inspect and operate everything on Windows)
 

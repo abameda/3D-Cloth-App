@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
+from .bvh import closest_points, first_hits
 from .fabric import surface
 from .gltf import Material, Part, texture_bytes, write_skinned_glb
 
@@ -37,12 +38,12 @@ def read_obj(path: Path):
     return np.array(positions), np.array(uvs or [[0, 0]]), np.array(faces), np.array(face_uv)
 
 
-def transfer_weights(garment: np.ndarray, garment_faces: np.ndarray, body: trimesh.Trimesh,
+def transfer_weights(garment: np.ndarray, garment_faces: np.ndarray, body: trimesh.Trimesh, nearest,
                      joints: np.ndarray, weights: np.ndarray, bone_count: int, smooth_iters: int = 12) -> np.ndarray:
+    """nearest: bvh.closest_points(body, garment) for every cloth vertex."""
     dense = np.zeros((len(body.vertices), bone_count))
     np.add.at(dense, (np.repeat(np.arange(len(joints)), joints.shape[1]), joints.reshape(-1)), weights.reshape(-1))
-    closest, _, tri = trimesh.proximity.closest_point(body, garment)
-    bary = trimesh.triangles.points_to_barycentric(body.triangles[tri], closest)
+    _, _, tri, bary = nearest
     corners = body.faces[tri]
     result = np.einsum('nk,nkb->nb', bary, dense[corners])
     # Laplacian smoothing on the cloth graph: neighbouring cloth moves together.
@@ -60,20 +61,16 @@ def transfer_weights(garment: np.ndarray, garment_faces: np.ndarray, body: trime
 def covered_triangles(body: trimesh.Trimesh, garment: trimesh.Trimesh, reach: float = 0.05) -> np.ndarray:
     """Body triangles whose three vertices sit under the garment (outward ray hits cloth within reach)."""
     origins = body.vertices + body.vertex_normals * 1e-4
-    hits = garment.ray.intersects_first(origins, body.vertex_normals)
-    covered = np.zeros(len(body.vertices), bool)
-    found = hits >= 0
-    if found.any():
-        points = trimesh.triangles.closest_point(garment.triangles[hits[found]], origins[found])
-        covered[np.nonzero(found)[0]] = np.linalg.norm(points - origins[found], axis=1) < reach
+    hits, distance = first_hits(garment.vertices, garment.faces, origins, body.vertex_normals)
+    covered = (hits >= 0) & (distance < reach)
     return covered[body.faces].all(axis=1)
 
 
-def tuck_morph(garment: np.ndarray, body: trimesh.Trimesh, category: str, gap: float = 0.0015) -> np.ndarray:
+def tuck_morph(garment: np.ndarray, body: trimesh.Trimesh, nearest, category: str, gap: float = 0.0015) -> np.ndarray:
     """Displacements that pull an inner layer snug to the body (gap metres off the skin) where an outer
     layer overlaps it: a bottom's upper part under a top, a whole top under outerwear. The phone enables
     this morph only while an outer layer is worn, so no outfit combination needs re-simulation."""
-    closest, distance, triangle = trimesh.proximity.closest_point(body, garment)
+    closest, distance, triangle, _ = nearest
     target = closest + body.face_normals[triangle] * gap
     amount = np.clip((distance - gap) / 0.002, 0, 1)  # cloth already at the gap stays put
     if category in ('bottom', 'onepiece'):
@@ -92,19 +89,23 @@ def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.
     positions = positions * scale  # GarmentCode simulates in centimetres
     cloth = trimesh.Trimesh(positions, faces, process=False)
     bone_names = [str(b) for b in rig['bone_names']]
-    weights = transfer_weights(positions, faces, body, rig['vertex_joints'], rig['vertex_weights'], len(bone_names))
+    nearest = closest_points(body.vertices, body.faces, positions)  # shared by skin weights and the tuck morph
+    weights = transfer_weights(positions, faces, body, nearest, rig['vertex_joints'], rig['vertex_weights'], len(bone_names))
     joints = np.argsort(-weights, axis=1)[:, :8]
     covers = covered_triangles(body, cloth)
     texture_data, mime = (texture_bytes(texture), 'image/png') if texture else (None, 'image/png')
     if front_photo:  # the real garment's look, projected from its flat-lay photos
-        from .photo_texture import atlas_bytes, bake
+        from .photo_texture import atlas_bytes, bake, panel_sides
         atlas = out.with_suffix('.atlas.png')
-        uvs, face_uv = bake(positions, faces, front_photo, back_photo, atlas)
+        segmentation = sim_obj.with_name(f'{sim_obj.stem}_segmentation.txt')  # GarmentCode's per-vertex panels
+        labels = segmentation.read_text().split() if segmentation.exists() else []
+        sides = panel_sides(labels) if len(labels) == len(positions) else None
+        uvs, face_uv = bake(positions, faces, front_photo, back_photo, atlas, sides)
         texture_data, mime = atlas_bytes(atlas), 'image/jpeg'
     bits = base64.b64encode(np.packbits(covers.astype(np.uint8))).decode()
     part = Part(positions=positions, faces=faces, uv=uvs, face_uv=face_uv,
                 joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
-                morphs={'tuck': tuck_morph(positions, body, category)} if category in ('bottom', 'onepiece', 'top') else None,
+                morphs={'tuck': tuck_morph(positions, body, nearest, category)} if category in ('bottom', 'onepiece', 'top') else None,
                 material=Material(name=f'fabric_{category}', rgb=colour, roughness=0.85, double_sided=True,
                                   texture=texture_data, mime=mime, **(surface(category, positions, faces, uvs, face_uv) or {})))
     write_skinned_glb(

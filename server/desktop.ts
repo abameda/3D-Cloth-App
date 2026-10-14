@@ -88,12 +88,16 @@ export function createDesktop(options: { projectRoot: string }) {
     return true;
   }
 
-  /** Live NVIDIA GPU status for the studio header (null when there is no usable NVIDIA GPU). */
-  function gpuStatus(): Promise<{ name: string; memoryTotalMb: number; memoryUsedMb: number; temperatureC: number; powerW: number } | null> {
+  type GpuStatus = { name: string; memoryTotalMb: number; memoryUsedMb: number; temperatureC: number; powerW: number; stale?: boolean };
+  let lastGpu: GpuStatus | null = null;
+  /** Live NVIDIA GPU status for the studio header (null when there is no usable NVIDIA GPU). nvidia-smi can
+   *  time out while the card is saturated (e.g. COLMAP matching), so a known GPU is then reported as stale. */
+  function gpuStatus(): Promise<GpuStatus | null> {
     return new Promise(done => execFile('nvidia-smi', ['--query-gpu=name,memory.total,memory.used,temperature.gpu,power.draw', '--format=csv,noheader,nounits'],
-      { timeout: 4000, windowsHide: true }, (error, stdout) => {
+      { timeout: 8000, windowsHide: true }, (error, stdout) => {
         const [name, total, used, temperature, power] = (error ? '' : stdout.split(/\r?\n/)[0]).split(',').map(s => s.trim());
-        done(name && Number(total) ? { name, memoryTotalMb: Number(total), memoryUsedMb: Number(used), temperatureC: Number(temperature), powerW: Number(power) || 0 } : null);
+        if (name && Number(total)) lastGpu = { name, memoryTotalMb: Number(total), memoryUsedMb: Number(used), temperatureC: Number(temperature), powerW: Number(power) || 0 };
+        done(name && Number(total) ? lastGpu : lastGpu ? { ...lastGpu, stale: true } : null);
       }));
   }
 

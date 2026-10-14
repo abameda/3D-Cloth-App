@@ -22,7 +22,7 @@ export const bodyRequestSchema = bodyProfileSchema.extend({
   keepFace: z.boolean().optional(),  // reuse the selfie already on the computer
 }).strict();
 
-export const garmentPresets = ['tshirt', 'longsleeve', 'overshirt', 'trousers', 'shorts', 'skirt'] as const;
+export const garmentPresets = ['tshirt', 'longsleeve', 'overshirt', 'hoodie', 'trousers', 'sweatpants', 'shorts', 'skirt'] as const;
 /** Draping-capable wardrobe categories and their default pattern presets. */
 export const presetForCategory: Partial<Record<typeof categories[number], typeof garmentPresets[number]>> = {
   top: 'tshirt', bottom: 'trousers', outerwear: 'overshirt',
@@ -99,7 +99,7 @@ const width = { slim: 1.0, regular: 1.05, loose: 1.2 } as const;
 
 export function specFromShape(shape: GarmentShape): GarmentSpec {
   const params: Record<string, number | boolean | string> = {};
-  const upper = ['tshirt', 'longsleeve', 'overshirt'].includes(shape.silhouette);
+  const upper = ['tshirt', 'longsleeve', 'overshirt', 'hoodie'].includes(shape.silhouette);
   if (upper) {
     if (shape.length && upperLength[shape.length]) params['shirt.length'] = upperLength[shape.length]!;
     if (shape.fit) params['shirt.width'] = width[shape.fit];

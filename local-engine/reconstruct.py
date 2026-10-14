@@ -28,11 +28,12 @@ def execute(job, stage, argv, expected, timeout=1800):
     if (job / 'cancel').exists():
         raise RuntimeError('Processing was cancelled.')
     emit(stage)
+    started=time.time()
     with (job / f'{stage}.log').open('wb') as log:
         result = subprocess.run([str(a) for a in argv], cwd=job, stdout=log, stderr=log, timeout=timeout, shell=False)
     if result.returncode or not all(p.exists() and p.stat().st_size for p in expected):
         raise RuntimeError(f'{stage} could not finish. Try more overlapping, sharp photos in steady lighting. Local diagnostic logs are available on the computer.')
-    atomic_json(checkpoint, {'completed': time.time(),'version':PIPELINE_VERSION})
+    atomic_json(checkpoint, {'completed': time.time(),'version':PIPELINE_VERSION,'seconds':round(time.time()-started,1),'tool':Path(str(argv[0])).parent.parent.parent.name})
 
 def prepare(job, source, kind, isolate):
     import cv2

@@ -421,7 +421,7 @@ $('#bodyForm').addEventListener('submit', event => {
     setStatus('Body queued on this computer', true); void poll();
   });
 });
-const UPPER = ['tshirt', 'longsleeve', 'overshirt'], LOWER = ['trousers', 'shorts', 'skirt'];
+const UPPER = ['tshirt', 'longsleeve', 'overshirt', 'hoodie'], LOWER = ['trousers', 'sweatpants', 'shorts', 'skirt'];
 $('#garmentForm').elements.category.addEventListener('change', event => {
   const allowed = event.target.value === 'bottom' ? LOWER : UPPER, preset = $('#garmentForm').elements.preset;
   for (const option of preset.options) option.hidden = !allowed.includes(option.value);
@@ -473,7 +473,8 @@ async function showGpu() {
     if (!gpu) { el.textContent = 'CPU only (no NVIDIA GPU)'; return; }
     const meter = Object.assign(document.createElement('span'), { className: 'meter' });
     meter.append(Object.assign(document.createElement('span'), { style: `width:${Math.round(100 * gpu.memoryUsedMb / gpu.memoryTotalMb)}%` }));
-    el.replaceChildren(`GPU ${shortDevice(gpu.name)}`, meter, `${(gpu.memoryUsedMb / 1024).toFixed(1)} / ${(gpu.memoryTotalMb / 1024).toFixed(1)} GB · ${gpu.temperatureC}°C`);
+    el.title = gpu.stale ? 'The card is busy; showing the last reading' : 'Graphics card used by the asset factory';
+    el.replaceChildren(`GPU ${shortDevice(gpu.name)}${gpu.stale ? ' (busy)' : ''}`, meter, `${(gpu.memoryUsedMb / 1024).toFixed(1)} / ${(gpu.memoryTotalMb / 1024).toFixed(1)} GB · ${gpu.temperatureC}°C`);
   } catch { el.textContent = ''; }
 }
 setInterval(() => { if (token && !document.hidden) void showGpu(); }, 5000);

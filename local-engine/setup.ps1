@@ -1,5 +1,6 @@
 param()
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'  # Windows PowerShell's progress bar slows large downloads many times over
 $taskProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'package.json'))) { throw 'Run setup from the Thread project.' }
 $taskRuntimeRoot = Join-Path $taskProjectRoot '.runtime'

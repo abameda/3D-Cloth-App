@@ -24,6 +24,14 @@ PRESETS: dict[str, dict] = {
                   'shirt.length': 1.45, 'shirt.width': 1.2, 'sleeve.length': 0.95, 'sleeve.sleeveless': False},
     # GarmentCode's straight leg (flare 1.0) reads as wide-leg; regular trousers taper towards the hem.
     'trousers': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'pants.length': 0.88, 'pants.flare': 0.8},
+    # Relaxed hoodie: dropped, roomy body to the hip, long sleeves gathered into rib cuffs, two-panel hood.
+    'hoodie': {'meta.upper': 'Shirt', 'meta.bottom': None, 'meta.wb': None,
+               'shirt.length': 1.4, 'shirt.width': 1.25, 'sleeve.sleeveless': False, 'sleeve.length': 1.0,
+               'sleeve.end_width': 0.75, 'sleeve.cuff.type': 'CuffBand', 'sleeve.cuff.cuff_len': 0.12,
+               'collar.component.style': 'Hood2Panels', 'collar.f_collar': 'CircleNeckHalf', 'collar.b_collar': 'CircleNeckHalf'},
+    # Sweatpants: elastic waistband, roomy straight legs.
+    'sweatpants': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'waistband.width': 0.35,
+                   'pants.length': 0.88, 'pants.width': 1.3, 'pants.flare': 1.0},
     'shorts': {'meta.upper': None, 'meta.bottom': 'Pants', 'meta.wb': 'StraightWB', 'pants.length': 0.35},
     'skirt': {'meta.upper': None, 'meta.bottom': 'PencilSkirt', 'meta.wb': 'StraightWB'},
 }
