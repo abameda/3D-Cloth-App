@@ -81,3 +81,9 @@ code { font: 12px ui-monospace, Consolas, monospace; background: var(--chip); pa
 @media (prefers-reduced-motion: reduce) { .status.busy::before { animation: none; } }
 .scene { display: grid; gap: 6px; }
 .scene > label:not(.check) { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; color: var(--muted); }
+.gpu { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gpu + .status { margin-left: 0; }
+.gpu .meter { width: 64px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.gpu .meter span { display: block; height: 100%; background: var(--ok); }
+.gpu.cpu { color: var(--warn); }
+.jobs .meta { color: var(--muted); font-size: 11px; }

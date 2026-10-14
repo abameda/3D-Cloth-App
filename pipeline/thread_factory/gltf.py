@@ -101,6 +101,9 @@ class Material:
     mime: str = 'image/png'
     alpha: str = 'OPAQUE'                 # OPAQUE | MASK (cut-out hair, lashes) | BLEND
     tint: tuple | None = None             # sRGB multiplier for a (greyscale) texture, e.g. hair colour
+    normal: bytes | None = None           # tileable tangent-space normal map (PNG), e.g. fabric weave
+    normal_repeat: float = 1.0            # tiles per UV unit (KHR_texture_transform)
+    normal_scale: float = 1.0
 
 
 @dataclass
@@ -124,6 +127,11 @@ def _material(b: _Builder, material: Material, images: list, textures: list) -> 
         pbr['baseColorTexture'] = {'index': len(textures) - 1}
         pbr['baseColorFactor'] = [*_linear(material.tint), 1.0] if material.tint else [1.0, 1.0, 1.0, 1.0]
     result = {'name': material.name, 'doubleSided': material.double_sided, 'pbrMetallicRoughness': pbr}
+    if material.normal is not None:
+        images.append({'bufferView': b.view(material.normal), 'mimeType': 'image/png'})
+        textures.append({'source': len(images) - 1})
+        result['normalTexture'] = {'index': len(textures) - 1, 'scale': material.normal_scale,
+                                   'extensions': {'KHR_texture_transform': {'scale': [material.normal_repeat] * 2}}}
     if material.alpha != 'OPAQUE':
         result['alphaMode'] = material.alpha
         if material.alpha == 'MASK':
@@ -188,6 +196,8 @@ def write_skinned_glb(path: Path, *, parts: list[Part], bone_names, bone_parents
     }
     if images:
         gltf['images'], gltf['textures'] = images, textures
+    if any('normalTexture' in m for m in materials):
+        gltf['extensionsUsed'] = ['KHR_texture_transform']  # optional: viewers without it just tile once
     while len(b.blob) % 4:
         b.blob.append(0)
     gltf['buffers'][0]['byteLength'] = len(b.blob)

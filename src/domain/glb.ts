@@ -2,6 +2,7 @@
 export interface GlbJson {
   images?: { bufferView?: number; mimeType?: string; uri?: string }[];
   textures?: { source: number }[];
+  materials?: { name?: string; normalTexture?: { index: number } }[];
   nodes?: { name?: string; extras?: Record<string, unknown> }[];
   buffers?: { uri?: string; byteLength: number }[];
 }

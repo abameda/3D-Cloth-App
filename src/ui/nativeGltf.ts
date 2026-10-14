@@ -23,8 +23,13 @@ export async function parseNativeGlb(bytes: ArrayBuffer, manifest: GlbJson, maxT
     const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => Image.getSize(file.uri, (width, height) => resolve({ width, height }), reject));
     if (width > maxTexture || height > maxTexture || width < 1 || height < 1) throw Error(`Use embedded textures up to ${maxTexture} × ${maxTexture}.`);
     const texture = new THREE.Texture({ localUri: file.uri, width, height } as unknown as HTMLImageElement);
-    texture.flipY = false; texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = false; texture.needsUpdate = true; textures.add(texture);
+    texture.flipY = false; texture.magFilter = THREE.LinearFilter;
+    // Tiled maps (fabric weave normal maps) repeat across the garment and need mipmaps or they shimmer at a
+    // distance; single-image atlases keep clamping and the cheaper linear filter.
+    const tiled = (manifest.materials ?? []).some(m => m.normalTexture?.index === textureIndex);
+    if (tiled) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.minFilter = tiled ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+    texture.generateMipmaps = tiled; texture.needsUpdate = true; textures.add(texture);
     return texture;
   } }));
   try { return { gltf: await loader.parseAsync(bytes, ''), cleanup }; }

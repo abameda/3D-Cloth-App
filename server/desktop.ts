@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
 
 /**
  * Thread Studio for Windows: the desktop fitting room, served by the local engine to this computer only.
@@ -65,6 +66,7 @@ export function createDesktop(options: { projectRoot: string }) {
     if (!path.startsWith('/v1/desktop/')) return false;
     const reply = (status: number, value: unknown) => send(res, status, JSON.stringify(value), 'application/json');
     if (!loopback(req) || req.method !== 'GET') { reply(404, { error: 'Not available.' }); return true; }
+    if (path === '/v1/desktop/system') { reply(200, { gpu: await gpuStatus() }); return true; }
     if (path === '/v1/desktop/samples') {
       const kits = [];
       for (const entry of existsSync(samples) ? await readdir(samples, { withFileTypes: true }) : []) {
@@ -84,6 +86,15 @@ export function createDesktop(options: { projectRoot: string }) {
     }
     reply(404, { error: 'Not found.' });
     return true;
+  }
+
+  /** Live NVIDIA GPU status for the studio header (null when there is no usable NVIDIA GPU). */
+  function gpuStatus(): Promise<{ name: string; memoryTotalMb: number; memoryUsedMb: number; temperatureC: number; powerW: number } | null> {
+    return new Promise(done => execFile('nvidia-smi', ['--query-gpu=name,memory.total,memory.used,temperature.gpu,power.draw', '--format=csv,noheader,nounits'],
+      { timeout: 4000, windowsHide: true }, (error, stdout) => {
+        const [name, total, used, temperature, power] = (error ? '' : stdout.split(/\r?\n/)[0]).split(',').map(s => s.trim());
+        done(name && Number(total) ? { name, memoryTotalMb: Number(total), memoryUsedMb: Number(used), temperatureC: Number(temperature), powerW: Number(power) || 0 } : null);
+      }));
   }
 
   return { serve, handle, trustedOrigin };

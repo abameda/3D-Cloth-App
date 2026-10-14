@@ -19,8 +19,8 @@ function fakeRunner(calls: string[]): StudioRunner {
       await writeFile(join(outDir, 'hair.glb'), 'hair');
       await writeFile(join(outDir, 'not-allowed.glb'), 'x');
     },
-    async garment({ outFile, category }, stage) {
-      calls.push(`garment:${category}`); stage('draping');
+    async garment({ outFile, category, quality }, stage) {
+      calls.push(quality ? `garment:${category}:${quality}` : `garment:${category}`); stage('draping');
       await writeFile(outFile, `garment-${category}-${version}`);
     },
   };
@@ -143,4 +143,16 @@ test('a selfie reaches the factory as a file and is deleted when no longer wante
     assert.ok(!existsSync(join(root, 'owner-a', 'face.jpg')), 'selfie removed from the computer');
     for (let i = 0; i < 200; i++) { const kit = await (await fetch(base + '/v1/studio/kit')).json() as KitManifest; if (kit.jobs.every(j => j.status === 'done' || j.status === 'failed')) break; await new Promise(r => setTimeout(r, 10)); }
   } finally { studio.close(); server.close(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
+});
+
+test('garment quality presets reach the factory and finished jobs report their duration', async () => {
+  const h = await harness();
+  try {
+    await h.call('/v1/studio/body', 'PUT', profile); await h.settled();
+    assert.equal((await h.call('/v1/studio/garments/tee', 'PUT', { garmentId: 'tee', category: 'top', quality: 'draft' })).status, 202);
+    assert.equal((await h.call('/v1/studio/garments/x', 'PUT', { garmentId: 'x', category: 'top', quality: 'ultra' })).status, 400);
+    const manifest = await h.settled();
+    assert.deepEqual(h.calls, ['body', 'garment:top:draft']);
+    assert.ok(manifest.jobs.every(job => job.status === 'done' && typeof job.seconds === 'number'));
+  } finally { await h.close(); }
 });

@@ -101,7 +101,7 @@ const label = text => text.replace(/^desktop-/, '').replace(/^shoes_/, '').repla
 /** Same treatment as the phone (src/ui/avatarKit.ts shadeClothInside): the inside of cloth is shaded darker. */
 function shadeClothInside(material) {
   material.onBeforeCompile = shader => {
-    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb *= 0.45;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb *= 0.62;');
   };
   material.customProgramCacheKey = () => 'thread-cloth-inside';
 }
@@ -303,7 +303,7 @@ function rotateWorld(bone, axis, angle) {
   turn.setFromAxisAngle(axisWorld.copy(AXIS[axis]).applyQuaternion(rootQ), angle);
   bone.quaternion.premultiply(parentQ).premultiply(turn).premultiply(parentQ.invert());
 }
-// The bind pose holds the arms 49� below horizontal with the forearms angled ~45� forward (measured on the rig).
+// The bind pose holds the arms 49° below horizontal with the forearms angled ~45° forward (measured on the rig).
 const RELAXED = [['upperarm01_L', 'z', -0.6], ['upperarm01_R', 'z', 0.6], ['lowerarm01_L', 'x', 0.45], ['lowerarm01_R', 'x', 0.45]];
 function posed(name, t) {
   if (name === 'bind') return [];
@@ -435,7 +435,7 @@ $('#garmentForm').addEventListener('submit', event => {
     const data = new FormData(form);
     const slug = String(data.get('name')).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'piece';
     const garmentId = `desktop-${slug}`;
-    const request = { garmentId, category: data.get('category'), spec: { preset: data.get('preset') }, colorHex: data.get('color') };
+    const request = { garmentId, category: data.get('category'), ...(data.get('quality') ? { quality: data.get('quality') } : {}), spec: { preset: data.get('preset') }, colorHex: data.get('color') };
     const front = data.get('front'), back = data.get('back');
     if (front?.size) request.photos = { front: await jpeg(front), ...(back?.size ? { back: await jpeg(back) } : {}) };
     await api(`/v1/studio/garments/${encodeURIComponent(garmentId)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
@@ -455,10 +455,29 @@ function renderJobs(jobs = []) {
     const what = Object.assign(document.createElement('div'), { className: 'what', textContent: job.kind === 'body' ? 'Body' : label(job.garmentId ?? 'garment') });
     const when = new Date(job.updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const stage = Object.assign(document.createElement('div'), { className: 'stage', textContent: `${job.status === 'failed' ? STAGES.failed : STAGES[job.stage] ?? job.stage} · ${when}${job.error ? ` — ${job.error}` : ''}` });
-    li.append(what, stage); return li;
+    li.append(what, stage);
+    if (job.device || job.seconds) li.append(Object.assign(document.createElement('div'), { className: 'meta', textContent: [shortDevice(job.device), duration(job.seconds)].filter(Boolean).join(' · ') }));
+    return li;
   }));
   if (!jobs.length) $('#jobs').append(Object.assign(document.createElement('li'), { textContent: 'No factory jobs yet.' }));
 }
+const shortDevice = name => !name ? '' : name === 'cpu' ? 'CPU' : name.replace(/^NVIDIA (GeForce )?/, '').replace(/ Laptop GPU$/, '');
+const duration = s => s === undefined ? '' : s < 90 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+
+/** Header indicator: which graphics card the factory uses and how much of its memory is in use. */
+async function showGpu() {
+  const el = $('#gpu');
+  try {
+    const { gpu } = await (await api('/v1/desktop/system')).json();
+    el.classList.toggle('cpu', !gpu);
+    if (!gpu) { el.textContent = 'CPU only (no NVIDIA GPU)'; return; }
+    const meter = Object.assign(document.createElement('span'), { className: 'meter' });
+    meter.append(Object.assign(document.createElement('span'), { style: `width:${Math.round(100 * gpu.memoryUsedMb / gpu.memoryTotalMb)}%` }));
+    el.replaceChildren(`GPU ${shortDevice(gpu.name)}`, meter, `${(gpu.memoryUsedMb / 1024).toFixed(1)} / ${(gpu.memoryTotalMb / 1024).toFixed(1)} GB · ${gpu.temperatureC}°C`);
+  } catch { el.textContent = ''; }
+}
+setInterval(() => { if (token && !document.hidden) void showGpu(); }, 5000);
+
 let polling = false, lastSignature = '';
 async function poll() {
   if (polling) return; polling = true;
@@ -502,6 +521,7 @@ $('#reload').addEventListener('click', () => void refresh().catch(error => setSt
 async function start() {
   token = token || readToken();
   if (!token) { askToken(); setStatus('Not connected'); return; }
+  void showGpu();
   try { await refresh(); await poll(); } catch (error) { setStatus(error.message); }
 }
 resize();

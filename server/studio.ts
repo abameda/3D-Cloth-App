@@ -3,14 +3,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { parseImage } from './service';
-import { accessoryCategories, accessoryNameSchema, bodyRequestSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
+import { accessoryCategories, accessoryNameSchema, bodyRequestSchema, garmentRequestSchema, presetForCategory, type BodyProfile, type GarmentQuality, type GarmentRequest, type KitManifest, type StudioJob } from '../src/domain/studio';
 
 /** Runs the Windows asset factory (pipeline/). Each call resolves when its output file exists. */
 export interface StudioRunner {
   body(profileFile: string, outDir: string, signal: AbortSignal): Promise<void>;
-  garment(input: { specFile: string; colorHex?: string; category: string; bodyDir: string; workDir: string; outFile: string; frontPhoto?: string; backPhoto?: string }, stage: (name: string) => void, signal: AbortSignal): Promise<void>;
+  garment(input: { specFile: string; colorHex?: string; category: string; bodyDir: string; workDir: string; outFile: string; frontPhoto?: string; backPhoto?: string; quality?: GarmentQuality }, stage: (name: string) => void, signal: AbortSignal): Promise<void>;
 }
 
 /** Photos are stored as files beside the state, never inside state.json. */
@@ -19,6 +19,8 @@ interface Accessory { name: string; category: typeof accessoryCategories[number]
 interface OwnerState { profile?: BodyProfile; body?: { sha256: string; bytes: number }; accessories?: Accessory[]; garments: Record<string, GarmentEntry>; jobs: StudioJob[] }
 interface Queued { owner: string; job: StudioJob }
 
+/** Cloth simulation profile per quality preset (pipeline/sim). */
+const SIM_PROFILES: Record<GarmentQuality, string> = { draft: 'mobile_fast_sim_props.yaml', standard: 'mobile_sim_props.yaml', high: 'quality_sim_props.yaml' };
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const fileKey = (garmentId: string) => createHash('sha256').update(garmentId).digest('hex').slice(0, 32);
 
@@ -26,6 +28,8 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
   const pipeline = resolve(projectRoot, 'pipeline');
   const bodyPython = join(pipeline, 'envs', 'body', 'Scripts', 'python.exe');
   const env = { ...process.env, PYTHONPATH: pipeline, ANNY_CACHE_DIR: join(pipeline, 'tools', 'anny-cache') };
+  // 1 cm cloth takes 18-24 s per garment on an RTX 5050 but minutes on a CPU, where 1.6 cm is the default.
+  const defaultQuality: GarmentQuality = spawnSync('nvidia-smi', ['-L'], { timeout: 5000, windowsHide: true }).status === 0 ? 'high' : 'standard';
   function run(command: string, args: string[], signal: AbortSignal, log: string) {
     return new Promise<void>((done, fail) => {
       const child = spawn(command, args, { cwd: pipeline, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], shell: command.endsWith('.cmd') });
@@ -45,12 +49,13 @@ export function pipelineRunner(projectRoot: string): StudioRunner {
     async body(profileFile, outDir, signal) {
       await run(bodyPython, ['-m', 'thread_factory.body', '--profile', profileFile, '--out', outDir], signal, join(outDir, 'factory.log'));
     },
-    async garment({ specFile, colorHex, category, bodyDir, workDir, outFile, frontPhoto, backPhoto }, stage, signal) {
+    async garment({ specFile, colorHex, category, bodyDir, workDir, outFile, frontPhoto, backPhoto, quality }, stage, signal) {
       const design = join(workDir, 'design.yaml');
       stage('sewing');
       await run(bodyPython, ['-m', 'thread_factory.design', '--spec', specFile, '--out', design], signal, join(workDir, 'design.log'));
       stage('draping');
-      await run(join(pipeline, 'scripts', 'garment-python.cmd'), ['-m', 'thread_factory.drape', '--design', design, '--body', bodyDir, '--out', join(workDir, 'drape'), '--name', 'garment'], signal, join(workDir, 'drape.log'));
+      await run(join(pipeline, 'scripts', 'garment-python.cmd'), ['-m', 'thread_factory.drape', '--design', design, '--body', bodyDir, '--out', join(workDir, 'drape'), '--name', 'garment',
+        '--sim-config', join(pipeline, 'sim', SIM_PROFILES[quality ?? defaultQuality])], signal, join(workDir, 'drape.log'));
       stage('rigging');
       await run(bodyPython, ['-m', 'thread_factory.garment_glb', '--sim', join(workDir, 'drape', 'garment', 'garment_sim.obj'), '--body', bodyDir,
         '--out', outFile, '--category', category, ...(colorHex ? ['--colour', colorHex] : []),
@@ -120,6 +125,8 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
     const state = await load(owner), controller = new AbortController();
     active = { owner, job, controller };
     const stage = (name: string) => { job.stage = name; job.updated = Date.now(); void save(owner); };
+    const started = Date.now();
+    const deviceFrom = async (report: string) => { try { return (JSON.parse(await readFile(report, 'utf8')) as { device?: string }).device; } catch { return undefined; } };
     job.status = 'running';
     try {
       const dir = ownerDir(owner), bodyDir = join(dir, 'body');
@@ -134,6 +141,7 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
         await rename(work, bodyDir);
         const bytes = await readFile(join(bodyDir, 'body.glb'));
         state.body = { sha256: sha(bytes), bytes: bytes.length };
+        job.device = await deviceFrom(join(bodyDir, 'fit_report.json'));
         state.accessories = [];
         for (const file of (await readdir(bodyDir)).filter(name => name.endsWith('.glb') && name !== 'body.glb').sort()) {
           const name = file.slice(0, -4);
@@ -157,11 +165,12 @@ export function createStudio(options: { root: string; runner: StudioRunner }) {
         const outFile = join(dir, 'garments', `${key}.glb`);
         const photo = (side: 'front' | 'back') => entry.photos?.[side] ? join(dir, 'photos', `${key}-${side}.jpg`) : undefined;
         await options.runner.garment({ specFile: join(workDir, 'spec.json'), colorHex: entry.request.colorHex, category: entry.request.category,
-          bodyDir, workDir, outFile, frontPhoto: photo('front'), backPhoto: photo('back') }, stage, controller.signal);
+          bodyDir, workDir, outFile, frontPhoto: photo('front'), backPhoto: photo('back'), quality: entry.request.quality }, stage, controller.signal);
+        job.device = await deviceFrom(join(workDir, 'drape', 'garment', 'drape.json'));
         const bytes = await readFile(outFile);
         Object.assign(entry, { sha256: sha(bytes), bytes: bytes.length, bodySha256: state.body.sha256 });
       }
-      job.status = 'done'; job.stage = 'done';
+      job.status = 'done'; job.stage = 'done'; job.seconds = Math.round((Date.now() - started) / 1000);
     } catch (e) {
       job.status = 'failed'; job.stage = 'failed'; job.error = e instanceof Error ? e.message.slice(0, 300) : 'Processing failed.';
     } finally {

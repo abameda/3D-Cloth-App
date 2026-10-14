@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -50,9 +52,17 @@ def age_parameter(years: float) -> float:
     return 1.0
 
 
+def compute_device() -> str:
+    """CPU by default: body and face fitting are hundreds of sequential steps on one small mesh, where GPU
+    launch overhead dominates (measured on an RTX 5050: 231 s on the GPU vs 90 s on the CPU for a selfie
+    body). THREAD_DEVICE=cuda opts in, e.g. for a future batched fit."""
+    return os.environ.get('THREAD_DEVICE') or 'cpu'
+
+
 def load_model():
     import anny
-    return anny.Anny(local_changes='default', facial_actions='all').to(dtype=torch.float32)
+    # Anny's buffers come from files, so they move explicitly; torch's default device covers new tensors.
+    return anny.Anny(local_changes='default', facial_actions='all').to(dtype=torch.float32, device=torch.get_default_device())
 
 
 class BodyFitter:
@@ -78,8 +88,8 @@ class BodyFitter:
 
     def _rings(self, vertices: torch.Tensor, wanted: list[str]) -> dict:
         """Hull-ordered torso vertex rings at the tape levels of the current shape."""
-        v = vertices[0].detach().numpy() @ TO_YUP.T
-        mesh = trimesh.Trimesh(v, self.model.faces.numpy(), process=False)
+        v = vertices[0].detach().cpu().numpy() @ TO_YUP.T
+        mesh = trimesh.Trimesh(v, self.model.faces.cpu().numpy(), process=False)
         levels = torso_levels(mesh)
         rings = {}
         for key in wanted:
@@ -134,7 +144,7 @@ class BodyFitter:
 
 def landmarks(model, out, to_world, mesh: trimesh.Trimesh) -> dict:
     """Skin-surface landmarks: joints locate them, the mesh surface gives tailor positions."""
-    heads = out['rest_bone_heads'][0].detach().numpy()
+    heads = out['rest_bone_heads'][0].detach().cpu().numpy()
     labels = model.bone_labels
     def head(name): return to_world(heads[labels.index(name)])
     v = mesh.vertices
@@ -183,8 +193,20 @@ def open_eye_openings(positions: np.ndarray, faces: np.ndarray, eye_positions: n
 
 def build(profile: dict, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
+    device = compute_device()
+    torch.set_default_device(device)  # every tensor below (ours and Anny's) is created on this device
+    timings, clock = {}, time.time()
+
+    def lap(stage: str):
+        nonlocal clock
+        if device == 'cuda':
+            torch.cuda.synchronize()
+        timings[stage] = round(time.time() - clock, 1); clock = time.time()
+
     model = load_model()
+    lap('load_model')
     phenotypes, local_changes = BodyFitter(model).fit(profile)
+    lap('fit_body')
     face_photo = None
     if profile.get('face_photo'):  # face shape from a selfie (MediaPipe landmarks -> Anny face controls)
         from PIL import Image, ImageOps
@@ -195,19 +217,20 @@ def build(profile: dict, out_dir: Path) -> dict:
         face_photo = (face_rgb, points)
         local_changes, face_rms = fit_face(model, phenotypes, local_changes, points)
         profile = {**profile, 'face_fit_rms_px': round(face_rms, 2)}
+        lap('fit_face')
     # Manual face/body sliders (values in [-1, 1]) apply last and win over fitted values.
     allowed = set(model.local_change_labels)
     local_changes.update({k: float(np.clip(v, -1, 1)) for k, v in profile.get('face_controls', {}).items() if k in allowed})
     with torch.no_grad():
         out = model(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes)
-        vertices = out['rest_vertices'][0].numpy().astype(np.float64)
-        heads = out['rest_bone_heads'][0].numpy()
+        vertices = out['rest_vertices'][0].cpu().numpy().astype(np.float64)
+        heads = out['rest_bone_heads'][0].cpu().numpy()
     pelvis = heads[model.bone_labels.index('root')]
     up = vertices @ TO_YUP.T
     offset = np.array([-(pelvis @ TO_YUP.T)[0], -up[:, 1].min(), -(pelvis @ TO_YUP.T)[2]])
     def to_world(p): return np.asarray(p, dtype=np.float64) @ TO_YUP.T + offset
     up = up + offset
-    faces = model.faces.numpy()
+    faces = model.faces.cpu().numpy()
     mesh = trimesh.Trimesh(up, faces, process=False)
 
     marks = landmarks(model, out, to_world, mesh)
@@ -218,7 +241,7 @@ def build(profile: dict, out_dir: Path) -> dict:
     with open(out_dir / 'sim_body.yaml', 'w') as f:
         yaml.safe_dump({'body': {**measurements, 'body_sample': 'sim_body'}}, f, sort_keys=True)
     labels = model.bone_labels
-    dominant = model.vertex_bone_indices[torch.arange(len(up)), model.vertex_bone_weights.argmax(dim=1)].numpy()
+    dominant = model.vertex_bone_indices[torch.arange(len(up)), model.vertex_bone_weights.argmax(dim=1)].cpu().numpy()
     part = {'body': [], 'left_arm': [], 'right_arm': [], 'left_leg': [], 'right_leg': [], 'face_internal': []}
     for i, b in enumerate(dominant):
         name = labels[int(b)]
@@ -239,24 +262,30 @@ def build(profile: dict, out_dir: Path) -> dict:
 
     # --- Phone avatar ---
     # The full MakeHuman topology (same shape parameters) anchors CC0 proxies: eyes, brows, lashes, hair.
-    full = anny.Anny(topology='anny-full', local_changes='default', facial_actions='all').to(dtype=torch.float32)
+    full = anny.Anny(topology='anny-full', local_changes='default', facial_actions='all').to(dtype=torch.float32, device=device)
     with torch.no_grad():
         morphs, full_morphs = {}, {}
-        full_rest = full(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes)['rest_vertices'][0].numpy().astype(np.float64)
-        for action in model.facial_action_labels:
-            shaped = model(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes,
-                           facial_actions={action: 1.0})['rest_vertices'][0].numpy()
-            morphs[action] = (shaped - out['rest_vertices'][0].numpy()) @ TO_YUP.T
-            shaped_full = full(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes,
-                               facial_actions={action: 1.0})['rest_vertices'][0].numpy()
-            full_morphs[action] = (shaped_full - full_rest) @ TO_YUP.T
-        bone_world = out['rest_bone_poses'][0].numpy().astype(np.float64)
+        full_rest = full(phenotype_kwargs=phenotypes, local_changes_kwargs=local_changes)['rest_vertices'][0].cpu().numpy().astype(np.float64)
+        # All 52 expressions in one batched pass (row i = expression i at full strength): ~14x faster than a loop.
+        actions = list(model.facial_action_labels)
+        batch = lambda values: {k: torch.full((len(actions),), float(v)) for k, v in values.items()}
+        one_hot = {action: row for action, row in zip(actions, torch.eye(len(actions)))}
+        shaped = model(phenotype_kwargs=batch(phenotypes), local_changes_kwargs=batch(local_changes),
+                       facial_actions=one_hot)['rest_vertices'].cpu().numpy()
+        shaped_full = full(phenotype_kwargs=batch(phenotypes), local_changes_kwargs=batch(local_changes),
+                           facial_actions=one_hot)['rest_vertices'].cpu().numpy()
+        rest = out['rest_vertices'][0].cpu().numpy()
+        for i, action in enumerate(actions):
+            morphs[action] = (shaped[i] - rest) @ TO_YUP.T
+            full_morphs[action] = (shaped_full[i] - full_rest) @ TO_YUP.T
+        bone_world = out['rest_bone_poses'][0].cpu().numpy().astype(np.float64)
+    lap('expressions')
     rot = np.eye(4); rot[:3, :3] = TO_YUP
     shift = np.eye(4); shift[:3, 3] = offset
     bone_world = np.einsum('ij,njk->nik', shift @ rot, bone_world)
     full_weights = np.zeros((len(full_rest), len(labels)))
     np.add.at(full_weights, (np.repeat(np.arange(len(full_rest)), full.vertex_bone_indices.shape[1]),
-                             full.vertex_bone_indices.numpy().reshape(-1)), full.vertex_bone_weights.numpy().reshape(-1))
+                             full.vertex_bone_indices.cpu().numpy().reshape(-1)), full.vertex_bone_weights.cpu().numpy().reshape(-1))
     rig = dict(bone_names=list(labels), bone_parents=list(model.bone_parents), bone_world=bone_world)
 
     def proxy(kind: str, name: str, material: str | None = None, with_morphs=True, roughness=0.5, tint=None) -> Part:
@@ -296,7 +325,7 @@ def build(profile: dict, out_dir: Path) -> dict:
     from PIL import Image
     from . import skin
     atlas, skin_uv, skin_face_uv, skin_source = skin.bake(
-        up, faces[open_faces], model.texture_coordinates.numpy(), model.face_texture_coordinate_indices.numpy()[open_faces],
+        up, faces[open_faces], model.texture_coordinates.cpu().numpy(), model.face_texture_coordinate_indices.cpu().numpy()[open_faces],
         sex=profile.get('sex'), age=profile.get('age', 30), tone=skin_rgb)
     if face_photo:
         from .face import project_face
@@ -306,15 +335,16 @@ def build(profile: dict, out_dir: Path) -> dict:
     if hair_part:
         atlas = skin.paint_scalp(atlas, up, faces[open_faces], skin_uv, skin_face_uv, hair_part.positions, hair_part.faces,
                                  hair_colour, brow_y=float(eyes.positions[:, 1].max()) + 0.015)
+    lap('skin_textures')
     buffer = io.BytesIO(); Image.fromarray(atlas).save(buffer, 'JPEG', quality=88); skin_texture = buffer.getvalue()
     Image.fromarray(atlas).save(out_dir / 'skin_atlas.jpg', quality=88)
     # Skeleton, skin weights and the exact skin triangle list the phone renders: garments bind to this
     # rig and index their body-coverage masks into these triangles.
     np.savez_compressed(out_dir / 'skeleton.npz', bone_names=np.array(labels), bone_parents=np.array(model.bone_parents),
-                        bone_world=bone_world, vertex_joints=model.vertex_bone_indices.numpy(),
-                        vertex_weights=model.vertex_bone_weights.numpy(), positions=up, faces=faces[open_faces])
+                        bone_world=bone_world, vertex_joints=model.vertex_bone_indices.cpu().numpy(),
+                        vertex_weights=model.vertex_bone_weights.cpu().numpy(), positions=up, faces=faces[open_faces])
     body_part = Part(positions=up, faces=faces[open_faces], uv=skin_uv, face_uv=skin_face_uv,
-                     joint_indices=model.vertex_bone_indices.numpy(), joint_weights=model.vertex_bone_weights.numpy(),
+                     joint_indices=model.vertex_bone_indices.cpu().numpy(), joint_weights=model.vertex_bone_weights.cpu().numpy(),
                      morphs=morphs, material=Material(name='skin', rgb=skin_rgb, roughness=0.55, texture=skin_texture, mime='image/jpeg'))
     write_skinned_glb(out_dir / 'body.glb', parts=[
         body_part,
@@ -324,7 +354,7 @@ def build(profile: dict, out_dir: Path) -> dict:
     ], **rig)
     # Shoe stand-ins (CC0, textured). Their delete_verts mark the foot skin hidden inside the shoe.
     skin_faces = faces[open_faces]
-    base_index = model.base_mesh_vertex_indices.numpy()
+    base_index = model.base_mesh_vertex_indices.cpu().numpy()
     for name, colours in SHOES.items():
         item, _ = accessories.load('clothes', name)
         hidden = np.isin(base_index[skin_faces], item.delete_verts).all(axis=1)
@@ -336,8 +366,11 @@ def build(profile: dict, out_dir: Path) -> dict:
         write_skinned_glb(out_dir / 'hair.glb', parts=[hair_part],
                           name='hair', extras={'thread': {'category': 'hair', 'style': hair}}, **rig)
     from . import base_layer  # neutral underwear for empty outfit slots
+    lap('assets')
     base_layer.build(out_dir, profile.get('sex', 'female'))
+    lap('base_layer')
     report = {'profile': profile, 'phenotypes': phenotypes, 'local_changes': local_changes, 'skin_source': skin_source,
+              'device': torch.cuda.get_device_name(0) if device == 'cuda' else 'cpu', 'timings_s': timings,
               'achieved': {'height_cm': measurements['height'], 'chest_cm': measurements['bust'],
                            'waist_cm': measurements['waist'], 'hips_cm': measurements['hips']},
               'garmentcode_measurements': measurements}

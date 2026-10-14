@@ -34,8 +34,15 @@ export const garmentSpecSchema = z.object({
 }).strict();
 export type GarmentSpec = z.infer<typeof garmentSpecSchema>;
 
+/**
+ * Cloth simulation quality. draft: 1.6 cm cloth, no cloth self-collision (the CPU-era shortcut);
+ * standard: 1.6 cm with self-collision; high: GarmentCode's native 1 cm cloth (GPU).
+ */
+export const garmentQualities = ['draft', 'standard', 'high'] as const;
+export type GarmentQuality = typeof garmentQualities[number];
 export const garmentRequestSchema = z.object({
   garmentId: z.string().min(1).max(200),
+  quality: z.enum(garmentQualities).optional(),
   category: z.enum(categories),
   spec: garmentSpecSchema.optional(),
   colorHex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -49,6 +56,8 @@ const assetSchema = z.object({ sha256: z.string().regex(/^[0-9a-f]{64}$/), bytes
 export const studioJobSchema = z.object({
   id: z.string().uuid(), kind: z.enum(['body', 'garment']), garmentId: z.string().optional(),
   status: z.enum(['queued', 'running', 'done', 'failed']), stage: z.string(), error: z.string().nullable(), updated: z.number(),
+  // Where and how long the factory worked (finished jobs): e.g. 'NVIDIA GeForce RTX 5050 Laptop GPU' or 'cpu'.
+  device: z.string().optional(), seconds: z.number().optional(),
 });
 export type StudioJob = z.infer<typeof studioJobSchema>;
 /** Accessories produced with the body: hair, colour-matched shoe stand-ins and the neutral base layer. */

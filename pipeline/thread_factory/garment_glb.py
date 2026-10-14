@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
+from .fabric import surface
 from .gltf import Material, Part, texture_bytes, write_skinned_glb
 
 
@@ -105,7 +106,7 @@ def build(sim_obj: Path, body_dir: Path, out: Path, *, category: str, colour=(0.
                 joint_indices=joints, joint_weights=np.take_along_axis(weights, joints, 1),
                 morphs={'tuck': tuck_morph(positions, body, category)} if category in ('bottom', 'onepiece', 'top') else None,
                 material=Material(name=f'fabric_{category}', rgb=colour, roughness=0.85, double_sided=True,
-                                  texture=texture_data, mime=mime))
+                                  texture=texture_data, mime=mime, **(surface(category, positions, faces, uvs, face_uv) or {})))
     write_skinned_glb(
         out, parts=[part], bone_names=bone_names, bone_parents=[int(p) for p in rig['bone_parents']],
         bone_world=rig['bone_world'], name=f'garment_{category}',

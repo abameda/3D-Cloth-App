@@ -19,7 +19,7 @@ from pathlib import Path
 GARMENTCODE = Path(__file__).resolve().parents[1] / 'third_party' / 'GarmentCode'
 
 
-def drape(design_file: Path, body_dir: Path, out_dir: Path, name: str, sim_config: Path | None = None) -> dict:
+def drape(design_file: Path, body_dir: Path, out_dir: Path, name: str, sim_config: Path | None = None, device: str | None = None) -> dict:
     design_file, body_dir, out_dir = design_file.resolve(), body_dir.resolve(), out_dir.resolve()
     sim_config = sim_config.resolve() if sim_config else None
     os.chdir(GARMENTCODE)  # GarmentCode resolves ./system.json and ./assets relative to its root
@@ -31,6 +31,11 @@ def drape(design_file: Path, body_dir: Path, out_dir: Path, name: str, sim_confi
     from pygarment.meshgen.boxmeshgen import BoxMesh
     from pygarment.meshgen.sim_config import PathCofig
     from pygarment.meshgen.simulation import run_sim
+    import warp as wp
+    wp.init()
+    # The simulator follows Warp's current device: the GPU when one is usable, else the CPU (LLVM kernels).
+    wp.set_device(device or ('cuda:0' if wp.is_cuda_available() else 'cpu'))
+    device = wp.get_device().name if wp.get_device().is_cuda else 'cpu'  # e.g. 'NVIDIA GeForce RTX 5050 Laptop GPU'
 
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -66,7 +71,8 @@ def drape(design_file: Path, body_dir: Path, out_dir: Path, name: str, sim_confi
     props.serialize(paths.element_sim_props)
     stats = props['sim']['stats']
     result = {
-        'name': name, 'sim_obj': str(paths.g_sim), 'seconds': round(time.time() - started, 1),
+        'name': name, 'sim_obj': str(paths.g_sim), 'seconds': round(time.time() - started, 1), 'device': device,
+        'profile': (sim_config or Path('mobile_sim_props.yaml')).stem,
         'failed': bool(stats['fails']),
         'body_collisions': stats['body_collisions'].get(box.name),
         'self_collisions': stats['self_collisions'].get(box.name),
@@ -82,8 +88,9 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--name', default=None)
     parser.add_argument('--sim-config', type=Path, default=None)
+    parser.add_argument('--device', default=None, help='cuda:0 or cpu (default: the GPU when available)')
     args = parser.parse_args()
-    print(json.dumps(drape(args.design, args.body, args.out, args.name or args.design.stem, args.sim_config), indent=2))
+    print(json.dumps(drape(args.design, args.body, args.out, args.name or args.design.stem, args.sim_config, args.device), indent=2))
 
 
 if __name__ == '__main__':

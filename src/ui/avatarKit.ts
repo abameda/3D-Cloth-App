@@ -29,7 +29,7 @@ export interface LoadedKit {
 export function shadeClothInside(material: THREE.MeshStandardMaterial) {
   material.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>',
-      '#include <map_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb *= 0.45;');
+      '#include <map_fragment>\n\tif (!gl_FrontFacing) diffuseColor.rgb *= 0.62;');
   };
   material.customProgramCacheKey = () => 'thread-cloth-inside';
 }

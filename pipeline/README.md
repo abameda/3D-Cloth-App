@@ -60,13 +60,31 @@ Run the commands from the `pipeline` folder, or set `PYTHONPATH` to it. `profile
 
 State lives in `.data/studio/<owner>/`, which is git-ignored and erasable with `DELETE /v1/studio`.
 
-### Simulation profiles
+### Simulation profiles and the GPU
 
-| Profile | Use | Notes |
-|---|---|---|
-| `sim/mobile_sim_props.yaml` (default) | All garments | 1.6 cm cloth vertex spacing (GarmentCode default: 1 cm): ~2.5× fewer vertices, faster drape |
-| `sim/mobile_fast_sim_props.yaml` | Bottoms on CPU | Cloth self-collision off. On CPU, self-collision between two close trouser legs costs about 9 s per frame; with a working CUDA GPU, use the default profile |
+Cloth simulation runs on the NVIDIA GPU whenever Warp sees one (`--device cpu` forces the CPU). The first GPU run after installing compiles Warp's simulation kernels for the card (about 60 s, cached afterwards).
 
+| Profile (`sim/`) | Studio quality | Cloth | Self-collision | Use |
+|---|---|---|---|---|
+| `quality_sim_props.yaml` | High | 1 cm (GarmentCode native) | on | Default with an NVIDIA GPU |
+| `mobile_sim_props.yaml` | Standard | 1.6 cm | on | Default without a GPU |
+| `mobile_fast_sim_props.yaml` | Draft | 1.6 cm | off | Quick previews only |
+
+Measured on an RTX 5050 Laptop GPU (8 GB) against this PC's Intel CPU, same garment pattern, same body, warm kernel caches (14 Oct 2026). Seconds are cloth simulation; each run adds about 5 s of sewing, meshing and preview rendering.
+
+| Garment | Profile | CPU | GPU | Speed-up | Peak VRAM | Collisions (body / self) |
+|---|---|---|---|---|---|---|
+| T-shirt | Standard | 184.0 s | 8.3 s | 22× | 230 MB | 0 / 0 |
+| T-shirt | High | not run | 17.8 s | | 342 MB | 0 / 3 |
+| Trousers | Draft (old CPU default) | 61.2 s | 8.4 s | 7× | 253 MB | 0 / 0 |
+| Trousers | Standard | 283.9 s | 9.3 s | 31× | 254 MB | 0 / 0 |
+| Trousers | High | not run | 23.7 s | | 482 MB | 0 / 0 |
+
+What the extra resolution buys, seen in Thread Studio: at 1.6 cm the tee's neckline and sleeve hems look ragged in a relaxed pose; at 1 cm the edges are clean and the sleeves fold naturally. The phone cost: a tee goes from 7.7k to 19.6k triangles (0.5 → 1.1 MB) and trousers from 10.7k to 27.4k (0.7 → 1.4 MB). A full outfit on the body is about 75k triangles.
+
+Every garment also carries a small tiling normal map (`thread_factory/fabric.py`): jersey knit for tops, twill for trousers and outerwear, repeated at real size through `KHR_texture_transform`. It gives cloth the light response of yarn instead of smooth plastic.
+
+The body build stays on the CPU: its fits are hundreds of sequential steps on one small mesh, where GPU launch overhead dominates (selfie body: 90 s on the CPU, 231 s on the GPU). Computing all 52 expressions in one batched pass cut that stage from 14 s to 3 s; a selfie body now takes about 65 s. `THREAD_DEVICE=cuda` opts the body into the GPU.
 ### Thread Studio (inspect and operate everything on Windows)
 
 Double-click `Thread-Studio.cmd` in the project root. It creates a private engine token on first run, starts the local engine (the same process the phone talks to) and opens the studio at `http://127.0.0.1:8790/studio/`. Keep its window open; close it to stop.

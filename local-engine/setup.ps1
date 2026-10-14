@@ -16,6 +16,10 @@ function Install-VerifiedArchive($TaskName,$TaskUrl,$TaskHash,$TaskExpected) {
   Expand-Archive -LiteralPath $taskArchive -DestinationPath (Join-Path $taskDestination 'bin') -Force
 }
 Install-VerifiedArchive 'colmap' 'https://github.com/colmap/colmap/releases/download/4.2.1/colmap-x64-windows-nocuda.zip' 'c493d88cb4a43f21afba42cb55bf786e5434a0420e73db0ba1454c5d8b3686ae' 'bin/bin/colmap.exe'
+# With an NVIDIA GPU, the CUDA build (415 MB, same release, pinned checksum) runs feature extraction and matching on the GPU.
+if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+  Install-VerifiedArchive 'colmap-cuda' 'https://github.com/colmap/colmap/releases/download/4.2.1/colmap-x64-windows-cuda.zip' 'e9c5cbd84c2ea986d2e970a2473fc2d2e6b34a2cdcf5d3df2765c319a63af881' 'bin/bin/colmap.exe'
+}
 Install-VerifiedArchive 'openmvs' 'https://github.com/cdcseacave/openMVS/releases/download/v2.4.0/OpenMVS_Windows_x64.zip' '0c31660c15c9ebc4c106873cf67564d9570d404aef7a6403451da1b6178b2167' 'bin/vc17/x64/Release/TextureMesh.exe'
 $taskPython = Join-Path $taskRuntimeRoot 'reconstruction-python/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $taskPython)) { & python -m venv (Join-Path $taskRuntimeRoot 'reconstruction-python'); if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 is required.' } }

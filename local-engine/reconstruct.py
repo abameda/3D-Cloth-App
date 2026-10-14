@@ -143,9 +143,19 @@ def align_and_pack(job, model, kind, capture):
     atomic_json(job/'quality.json',report)
     emit('reconstructed',quality=report)
 
+def gpu_ready():
+    """An NVIDIA GPU the driver currently exposes (THREAD_DEVICE=cpu forces the CPU tools)."""
+    if os.environ.get('THREAD_DEVICE')=='cpu':return False
+    try:return subprocess.run(['nvidia-smi','-L'],capture_output=True,timeout=10).returncode==0
+    except (OSError,subprocess.TimeoutExpired):return False
+
 def run(job,source,kind,isolate=True):
     job=job.resolve();source=source.resolve();job.mkdir(parents=True,exist_ok=True)
-    colmap=ROOT/'.runtime/colmap/bin/bin/colmap.exe'
+    # The CUDA build of COLMAP (installed by setup.ps1 when an NVIDIA GPU is present) extracts and matches
+    # features on the GPU; the CPU build stays as the fallback.
+    cuda_colmap=ROOT/'.runtime/colmap-cuda/bin/bin/colmap.exe'
+    colmap=cuda_colmap if cuda_colmap.is_file() and gpu_ready() else ROOT/'.runtime/colmap/bin/bin/colmap.exe'
+    use_gpu='1' if colmap==cuda_colmap else '0'
     mvs=ROOT/'.runtime/openmvs/bin/vc17/x64/Release'
     for tool in [colmap,*[mvs/(n+'.exe') for n in ['InterfaceCOLMAP','DensifyPointCloud','ReconstructMesh','TextureMesh']]]:
         if not tool.is_file(): raise RuntimeError('The local reconstruction tools are not installed. Run the local setup on your computer first.')
@@ -153,11 +163,11 @@ def run(job,source,kind,isolate=True):
     sparse=job/'sparse';sparse.mkdir(exist_ok=True)
     txt=job/'sparse-txt';txt.mkdir(exist_ok=True)
     feature=[colmap,'feature_extractor','--database_path',job/'database.db','--image_path',job/'images',
-        '--ImageReader.single_camera','1','--FeatureExtraction.use_gpu','0','--FeatureExtraction.num_threads','6',
+        '--ImageReader.single_camera','1','--FeatureExtraction.use_gpu',use_gpu,'--FeatureExtraction.num_threads','6',
         '--FeatureExtraction.max_image_size','1600','--SiftExtraction.max_num_features','8192']
     if isolate:feature+=['--ImageReader.mask_path',job/'masks']
     execute(job,'aligning_features',feature,[job/'database.db'])
-    execute(job,'matching_views',[colmap,'exhaustive_matcher','--database_path',job/'database.db','--FeatureMatching.use_gpu','0','--FeatureMatching.num_threads','6'],[job/'database.db'])
+    execute(job,'matching_views',[colmap,'exhaustive_matcher','--database_path',job/'database.db','--FeatureMatching.use_gpu',use_gpu,'--FeatureMatching.num_threads','6'],[job/'database.db'])
     execute(job,'measuring_geometry',[colmap,'mapper','--database_path',job/'database.db','--image_path',job/'images','--output_path',sparse,'--Mapper.num_threads','6'],[sparse/'0'/'images.bin'])
     execute(job,'checking_coverage',[colmap,'model_converter','--input_path',sparse/'0','--output_path',txt,'--output_type','TXT'],[txt/'images.txt'])
     registered=sum(1 for line in (txt/'images.txt').read_text().splitlines() if line and not line.startswith('#') and '.jpg' in line)

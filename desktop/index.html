@@ -15,6 +15,7 @@
     <select id="source" aria-label="Kit to inspect"></select>
   </label>
   <button id="reload" class="ghost" title="Reload the kit from disk">Reload</button>
+  <div id="gpu" class="gpu" title="Graphics card used by the asset factory"></div>
   <div id="status" class="status" role="status" aria-live="polite">Starting…</div>
 </header>
 
@@ -95,7 +96,15 @@
         <option value="trousers">Trousers</option><option value="shorts">Shorts</option><option value="skirt">Skirt</option>
       </select></label>
     </div>
-    <label>Colour (used without photos) <input name="color" type="color" value="#30415f"></label>
+    <div class="row">
+      <label>Colour (without photos) <input name="color" type="color" value="#30415f"></label>
+      <label>Cloth quality <select name="quality">
+        <option value="">Automatic (best for this PC)</option>
+        <option value="high">High · 1 cm cloth</option>
+        <option value="standard">Standard · 1.6 cm</option>
+        <option value="draft">Draft · fastest</option>
+      </select></label>
+    </div>
     <div class="row">
       <label>Flat-lay front <input name="front" type="file" accept="image/*"></label>
       <label>Back (optional) <input name="back" type="file" accept="image/*"></label>
